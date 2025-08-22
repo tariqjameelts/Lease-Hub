@@ -1,7 +1,10 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt.android)
     alias(libs.plugins.compose.compiler)
+
 
 }
 
@@ -42,9 +45,9 @@ android {
     buildFeatures {
         compose = true
     }
-    composeOptions {
+/*    composeOptions {
         kotlinCompilerExtensionVersion = "1.5.1"
-    }
+    }*/
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -65,6 +68,18 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
 //    implementation(libs.kotlin.compose.compiler.plugin.embeddable)
 //    implementation(libs.kotlin.compose.compiler.plugin)
+
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.android.compiler)
+    implementation(libs.hilt.navigation.compose)
+
+
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.room.compiler)
+    annotationProcessor(libs.androidx.room.room.compiler)
+    implementation(libs.androidx.room.ktx)
+
+    implementation(libs.bcrypt)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

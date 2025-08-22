@@ -1,4 +1,4 @@
-package com.mindblowers.leasehub.ui.sc.main
+package com.mindblowers.leasehub.ui.sc.main.dashboard.tenant
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
