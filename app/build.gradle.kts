@@ -70,6 +70,7 @@ dependencies {
 //    implementation(libs.kotlin.compose.compiler.plugin)
 
     implementation(libs.hilt.android)
+    implementation(libs.material)
     ksp(libs.hilt.android.compiler)
     implementation(libs.hilt.navigation.compose)
 

@@ -20,6 +20,10 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE expenseDate BETWEEN :startDate AND :endDate")
     suspend fun getExpensesBetweenDates(startDate: Date, endDate: Date): List<Expense>
 
+    @Query("SELECT * FROM expenses WHERE expenseDate BETWEEN :startDate AND :endDate ORDER BY expenseDate DESC")
+    fun getExpensesBetweenDatesFlow(startDate: Date, endDate: Date): Flow<List<Expense>>
+
+
     @Query("SELECT SUM(amount) FROM expenses WHERE expenseDate BETWEEN :startDate AND :endDate")
     suspend fun getTotalExpensesBetweenDates(startDate: Date, endDate: Date): Double
 
@@ -28,6 +32,8 @@ interface ExpenseDao {
         val category: ExpenseCategory,
         val total: Double
     )
+
+
 
     @Query("SELECT category, SUM(amount) as total FROM expenses WHERE expenseDate BETWEEN :startDate AND :endDate GROUP BY category")
     suspend fun getExpensesByCategory(startDate: Date, endDate: Date): List<ExpenseByCategory>

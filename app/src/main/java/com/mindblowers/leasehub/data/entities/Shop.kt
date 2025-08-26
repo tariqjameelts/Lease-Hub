@@ -9,19 +9,22 @@ import com.mindblowers.leasehub.data.converters.DateConverter
 @Entity(tableName = "shops")
 data class Shop(
     @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
-    val shopNumber: String,
-    val floor: Int,
-    val buildingName: String,
-    val address: String,
-    val area: Double, // in square meters/feet
-    val monthlyRent: Double,
-    val securityDeposit: Double,
+    val id: Long = 0L,
+
+    val shopNumber: String = "",
+    val floor: Int = 0,
+    val buildingName: String = "",
+    val address: String = "",
+    val area: Double = 0.0, // in square meters/feet
+    val monthlyRent: Double = 0.0,
+    val securityDeposit: Double = 0.0,
     val amenities: String? = null, // Comma separated or JSON
     val status: ShopStatus = ShopStatus.VACANT,
     val isActive: Boolean = true,
+
     @TypeConverters(DateConverter::class)
     val createdAt: Date = Date(),
+
     val notes: String? = null
 )
 

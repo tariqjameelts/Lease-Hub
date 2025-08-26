@@ -1,7 +1,10 @@
 package com.mindblowers.leasehub.ui.sc.main.dashboard.tenant
 
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -20,7 +23,7 @@ fun AddTenantScreen(navController: NavHostController) {
     var purpose by remember { mutableStateOf("") }
     var gender by remember { mutableStateOf("") }
     var showDialog by remember { mutableStateOf(false) }
-
+    val scrollState = rememberScrollState()
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -36,6 +39,7 @@ fun AddTenantScreen(navController: NavHostController) {
         Column(
             modifier = Modifier
                 .padding(paddingValues)
+
                 .padding(16.dp)
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp)

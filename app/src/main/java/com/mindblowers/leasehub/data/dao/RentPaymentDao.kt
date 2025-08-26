@@ -13,6 +13,17 @@ import java.util.Date
 interface RentPaymentDao {
     @Insert
     suspend fun insert(payment: RentPayment): Long
+    @Query("""
+    SELECT SUM(amount) 
+    FROM rent_payments 
+    WHERE agreementId = :agreementId AND month = :month AND year = :year
+""")
+    suspend fun getTotalPaidForPeriod(
+        agreementId: Long,
+        month: Int,
+        year: Int
+    ): Double
+
 
     @Transaction
     @Query("SELECT * FROM rent_payments WHERE id = :paymentId")

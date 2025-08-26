@@ -7,12 +7,14 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.mindblowers.leasehub.data.converters.DateConverter
 import com.mindblowers.leasehub.data.converters.EnumConverters
+import com.mindblowers.leasehub.data.dao.ActivityLogDao
 import com.mindblowers.leasehub.data.dao.ExpenseDao
 import com.mindblowers.leasehub.data.dao.LeaseAgreementDao
 import com.mindblowers.leasehub.data.dao.RentPaymentDao
 import com.mindblowers.leasehub.data.dao.ShopDao
 import com.mindblowers.leasehub.data.dao.TenantDao
 import com.mindblowers.leasehub.data.dao.UserDao
+import com.mindblowers.leasehub.data.entities.ActivityLog
 import com.mindblowers.leasehub.data.entities.Expense
 import com.mindblowers.leasehub.data.entities.LeaseAgreement
 import com.mindblowers.leasehub.data.entities.RentPayment
@@ -27,9 +29,10 @@ import com.mindblowers.leasehub.data.entities.User
         Tenant::class,
         LeaseAgreement::class,
         RentPayment::class,
-        Expense::class
+        Expense::class,
+        ActivityLog::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(DateConverter::class, EnumConverters::class)
@@ -40,6 +43,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun leaseAgreementDao(): LeaseAgreementDao
     abstract fun rentPaymentDao(): RentPaymentDao
     abstract fun expenseDao(): ExpenseDao
+    abstract fun activityLogDao(): ActivityLogDao
 
     companion object {
         @Volatile

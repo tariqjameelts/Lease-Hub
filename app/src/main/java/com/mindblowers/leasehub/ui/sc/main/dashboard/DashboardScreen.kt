@@ -13,7 +13,7 @@ import androidx.navigation.NavHostController
 import com.mindblowers.leasehub.ui.sc.main.dashboard.home.HomeScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.reports.ReportsScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.settings.SettingsScreen
-import com.mindblowers.leasehub.ui.sc.main.dashboard.shop.AddShopBottomSheet
+import com.mindblowers.leasehub.ui.sc.main.dashboard.shop.EditShopBottomSheet
 import com.mindblowers.leasehub.ui.sc.main.dashboard.shop.ShopListScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.tenant.TenantsScreen
 
@@ -93,12 +93,13 @@ fun DashboardScreen(
             }
         }
         if (showAddShopSheet) {
-            AddShopBottomSheet(
+            EditShopBottomSheet(
                 onDismiss = {
                     showAddShopSheet = false
                  //   viewModel.loadShops() // reload after adding
                 },
-                viewModel = dashboardViewModel
+                viewModel = dashboardViewModel,
+
             )
         }
     }
