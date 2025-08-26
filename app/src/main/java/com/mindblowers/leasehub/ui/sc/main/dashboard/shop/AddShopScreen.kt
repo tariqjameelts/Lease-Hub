@@ -16,26 +16,29 @@ import com.mindblowers.leasehub.ui.sc.components.ConfirmationDialog
 import com.mindblowers.leasehub.ui.sc.main.dashboard.DashboardViewModel
 import java.util.Date
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddShopBottomSheet(
+fun EditShopBottomSheet(
+    shop: Shop = Shop(), // default empty means "Add"
     onDismiss: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
-    // Form state
-    var shopNumber by remember { mutableStateOf("") }
-    var floor by remember { mutableStateOf("") }
-    var buildingName by remember { mutableStateOf("") }
-    var address by remember { mutableStateOf("") }
-    var area by remember { mutableStateOf("") }
-    var monthlyRent by remember { mutableStateOf("") }
-    var securityDeposit by remember { mutableStateOf("") }
-    var amenities by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf(ShopStatus.VACANT) }
+    // Check if this is a new shop or existing one
+    val isNewShop = shop.id == 0L
 
-    var expanded by remember { mutableStateOf(false) }
+    // Form state initialized with shop’s values
+    var shopNumber by remember { mutableStateOf(shop.shopNumber) }
+    var floor by remember { mutableStateOf(shop.floor.toString()) }
+    var buildingName by remember { mutableStateOf(shop.buildingName) }
+    var address by remember { mutableStateOf(shop.address) }
+    var area by remember { mutableStateOf(shop.area.toString()) }
+    var monthlyRent by remember { mutableStateOf(shop.monthlyRent.toString()) }
+    var securityDeposit by remember { mutableStateOf(shop.securityDeposit.toString()) }
+    var amenities by remember { mutableStateOf(shop.amenities ?: "") }
+    var notes by remember { mutableStateOf(shop.notes ?: "") }
     var showDialog by remember { mutableStateOf(false) }
+
     val bottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
@@ -49,13 +52,15 @@ fun AddShopBottomSheet(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // ✅ Dynamic title
             item {
                 Text(
-                    "Add New Shop",
+                    if (isNewShop) "Add Shop" else "Edit Shop",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 )
             }
 
+            // --- Text fields remain same as before ---
             item {
                 OutlinedTextField(
                     value = shopNumber,
@@ -143,44 +148,9 @@ fun AddShopBottomSheet(
                 )
             }
 
-            // Status dropdown
-            item {
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
-                ) {
-                    OutlinedTextField(
-                        value = status.name,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Status") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        ShopStatus.entries.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option.name) },
-                                onClick = {
-                                    status = option
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
+            item { Spacer(Modifier.height(8.dp)) }
 
-            item {
-                Spacer(Modifier.height(8.dp))
-            }
-
-            // Action buttons row
+            // ✅ Action buttons
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -202,19 +172,26 @@ fun AddShopBottomSheet(
                         },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("Save", fontWeight = FontWeight.Bold)
+                        Text(
+                            if (isNewShop) "Add" else "Update",
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
         }
 
+        // ✅ Dynamic dialog
         if (showDialog) {
             ConfirmationDialog(
-                title = "Confirm Save",
-                message = "Do you want to save this shop?",
+                title = if (isNewShop) "Confirm Add" else "Confirm Update",
+                message = if (isNewShop)
+                    "Do you want to add this shop?"
+                else
+                    "Do you want to update this shop?",
                 onConfirm = {
                     showDialog = false
-                    val shop = Shop(
+                    val updatedShop = shop.copy(
                         shopNumber = shopNumber.trim(),
                         floor = floor.toIntOrNull() ?: 0,
                         buildingName = buildingName.trim(),
@@ -224,10 +201,13 @@ fun AddShopBottomSheet(
                         securityDeposit = securityDeposit.toDoubleOrNull() ?: 0.0,
                         amenities = amenities.takeIf { it.isNotBlank() },
                         notes = notes.takeIf { it.isNotBlank() },
-                        status = status,
-                        createdAt = Date()
+                        createdAt = shop.createdAt // preserve original createdAt
                     )
-                    viewModel.addShop(shop)
+                    if (isNewShop) {
+                        viewModel.addShop(updatedShop)
+                    } else {
+                        viewModel.updateShop(updatedShop)
+                    }
                     onDismiss()
                 },
                 onDismiss = { showDialog = false }

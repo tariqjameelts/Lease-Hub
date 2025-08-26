@@ -1,11 +1,13 @@
 package com.mindblowers.leasehub.data.repository
 
+import com.mindblowers.leasehub.data.dao.ActivityLogDao
 import com.mindblowers.leasehub.data.dao.ExpenseDao
 import com.mindblowers.leasehub.data.dao.LeaseAgreementDao
 import com.mindblowers.leasehub.data.dao.RentPaymentDao
 import com.mindblowers.leasehub.data.dao.ShopDao
 import com.mindblowers.leasehub.data.dao.TenantDao
 import com.mindblowers.leasehub.data.dao.UserDao
+import com.mindblowers.leasehub.data.entities.ActivityLog
 import com.mindblowers.leasehub.data.entities.AgreementStatus
 import com.mindblowers.leasehub.data.entities.Expense
 import com.mindblowers.leasehub.data.entities.LeaseAgreement
@@ -14,7 +16,9 @@ import com.mindblowers.leasehub.data.entities.Shop
 import com.mindblowers.leasehub.data.entities.ShopStatus
 import com.mindblowers.leasehub.data.entities.Tenant
 import com.mindblowers.leasehub.data.entities.User
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import java.util.Calendar
 import java.util.Date
 import javax.inject.Inject
@@ -25,7 +29,8 @@ class AppRepository @Inject constructor(
     private val tenantDao: TenantDao,
     private val leaseAgreementDao: LeaseAgreementDao,
     private val rentPaymentDao: RentPaymentDao,
-    private val expenseDao: ExpenseDao
+    private val expenseDao: ExpenseDao,
+    private val activityLogDao: ActivityLogDao
 ) {
     // User Operations
     suspend fun createUser(user: User) = userDao.insert(user)
@@ -37,11 +42,9 @@ class AppRepository @Inject constructor(
     suspend fun insertShop(shop: Shop) = shopDao.insert(shop)
     fun getAllShops() = shopDao.getAllShops()
     fun getShopsByStatus(status: ShopStatus) = shopDao.getShopsByStatus(status)
-    suspend fun updateShopStatus(shopId: Long, status: ShopStatus) =
-        shopDao.updateShopStatus(shopId, status)
 
     // Tenant Operations
-    suspend fun insertTenant(tenant: Tenant) = tenantDao.insert(tenant)
+    suspend fun insertTenant(tenant: Tenant) :Long = tenantDao.insert(tenant)
     fun getAllTenants() = tenantDao.getAllTenants()
     suspend fun deactivateTenant(tenantId: Long) = tenantDao.deactivateTenant(tenantId)
 
@@ -50,6 +53,12 @@ class AppRepository @Inject constructor(
     suspend fun getAgreementWithDetails(agreementId: Long) =
         leaseAgreementDao.getAgreementWithDetails(agreementId)
     fun getActiveAgreementsWithDetails() = leaseAgreementDao.getActiveAgreementsWithDetails()
+    suspend fun getActiveAgreementForShop(shopId: Long) =
+        leaseAgreementDao.getActiveAgreementForShop(shopId)
+
+    // ✅ NEW
+    suspend fun getActiveAgreementForShopAndTenant(shopId: Long, tenantId: Long) =
+        leaseAgreementDao.getActiveAgreementForShopAndTenant(shopId, tenantId)
     suspend fun updateAgreementStatus(agreementId: Long, status: AgreementStatus) =
         leaseAgreementDao.updateAgreementStatus(agreementId, status)
 
@@ -61,6 +70,17 @@ class AppRepository @Inject constructor(
         rentPaymentDao.getPaymentsWithDetailsForAgreement(agreementId)
     suspend fun getMonthlyRevenue(year: Int, month: Int) =
         rentPaymentDao.getMonthlyRevenue(year, month)
+    suspend fun getRemainingRentForPeriod(agreementId: Long, month: Int, year: Int): Double {
+        val agreement = leaseAgreementDao.getAgreementWithDetails(agreementId).agreement
+            ?: throw IllegalArgumentException("Agreement not found")
+
+        val monthlyRent = agreement.monthlyRent
+        val alreadyPaid = rentPaymentDao.getTotalPaidForPeriod(agreementId, month, year) ?: 0.0
+
+        return (monthlyRent - alreadyPaid).coerceAtLeast(0.0)
+
+    }
+
 
     // Expense Operations
     suspend fun insertExpense(expense: Expense) = expenseDao.insert(expense)
@@ -70,6 +90,11 @@ class AppRepository @Inject constructor(
         expenseDao.getTotalExpensesBetweenDates(startDate, endDate)
     suspend fun getExpensesByCategory(startDate: Date, endDate: Date) =
         expenseDao.getExpensesByCategory(startDate, endDate)
+
+    fun getExpensesBetweenDates(startDate: Date, endDate: Date): Flow<List<Expense>> {
+        return expenseDao.getExpensesBetweenDatesFlow(startDate, endDate)
+    }
+
 
     // Business Logic Methods
     suspend fun getDashboardStats(): DashboardStats {
@@ -94,6 +119,10 @@ class AppRepository @Inject constructor(
             monthlyExpenses = monthlyExpenses,
             netProfit = monthlyRevenue - monthlyExpenses
         )
+    }
+
+    suspend fun getShopById(shopId:Long):Flow<Shop?>{
+        return shopDao.getShopById(shopId)
     }
 
     suspend fun getRentDueReminders(): List<RentDueReminder> {
@@ -135,6 +164,135 @@ class AppRepository @Inject constructor(
             }
         }
     }
+
+
+    suspend fun buildRentSummary(agreementId: Long, asOf: Date = Date()): RentSummary {
+        val agreementWithDetails = leaseAgreementDao.getAgreementWithDetails(agreementId)
+        val agreement = agreementWithDetails.agreement
+        val monthlyRent = agreement.monthlyRent
+
+        // define iteration window: from start to min(end, asOf)
+        val startCal = Calendar.getInstance().apply { time = agreement.startDate; set(Calendar.DAY_OF_MONTH, 1) }
+        val endBound = if (asOf.before(agreement.endDate)) asOf else agreement.endDate
+        val endCal = Calendar.getInstance().apply { time = endBound; set(Calendar.DAY_OF_MONTH, 1) }
+
+        // We'll also compute what's "current" (asOf month)
+        val asOfCal = Calendar.getInstance().apply { time = asOf }
+        val asOfMonth = asOfCal.get(Calendar.MONTH) + 1
+        val asOfYear = asOfCal.get(Calendar.YEAR)
+
+        // Iterate months
+        val records = mutableListOf<MonthRentRecord>()
+        val iter = Calendar.getInstance().apply { time = startCal.time }
+
+        while (iter.before(endCal) || // strictly before end month
+            (iter.get(Calendar.MONTH) == endCal.get(Calendar.MONTH) && iter.get(Calendar.YEAR) == endCal.get(Calendar.YEAR))) {
+            val m = iter.get(Calendar.MONTH) + 1
+            val y = iter.get(Calendar.YEAR)
+
+            val paid = rentPaymentDao.getTotalPaidForPeriod(agreementId, m, y)
+            val remaining = (monthlyRent - paid).coerceAtLeast(0.0)
+            val status = when {
+                remaining == 0.0 && paid > 0.0 -> RentStatus.PAID
+                paid in 0.0..(monthlyRent - 0.01) && paid > 0.0 -> RentStatus.PARTIAL
+                paid <= 0.0 -> if (monthlyRent <= 0.0) RentStatus.PAID else RentStatus.UNPAID
+                else -> RentStatus.PARTIAL
+            }
+
+            records += MonthRentRecord(
+                month = m,
+                year = y,
+                rent = monthlyRent,
+                paid = paid,
+                remaining = remaining,
+                status = status
+            )
+
+            // next month
+            iter.add(Calendar.MONTH, 1)
+        }
+
+        // Aggregate
+        var currentRemaining = 0.0
+        var previousPendingTotal = 0.0
+
+        records.forEach { rec ->
+            if (rec.year == asOfYear && rec.month == asOfMonth) {
+                currentRemaining = rec.remaining
+            } else {
+                // strictly before asOf month?
+                val isBefore = (rec.year < asOfYear) || (rec.year == asOfYear && rec.month < asOfMonth)
+                if (isBefore) previousPendingTotal += rec.remaining
+            }
+        }
+
+        val totalRemaining = previousPendingTotal + currentRemaining
+
+        return RentSummary(
+            currentRemaining = currentRemaining,
+            previousPendingTotal = previousPendingTotal,
+            totalRemaining = totalRemaining,
+            records = records
+        )
+    }
+
+
+    suspend fun updateAgreementEndDate(agreementId: Long, newEndDate: Date) {
+        val agreement = leaseAgreementDao.getAgreementById(agreementId) ?: return
+        leaseAgreementDao.update(agreement.copy(endDate = newEndDate))
+    }
+
+    suspend fun deleteAgreement(agreement: LeaseAgreement) {
+        leaseAgreementDao.deleteAgreement(agreement)
+    }
+
+    suspend fun updateShopStatus(shopId: Long, status: ShopStatus) {
+        val shop = shopDao.getShopById(shopId).firstOrNull() // collect once
+        shop?.let {
+            shopDao.update(it.copy(status = status))
+        }
+    }
+
+
+    suspend fun deleteShop(shop: Shop) {
+        shopDao.delete(shop)
+    }
+
+    // inside AppRepository
+    suspend fun getAgreementById(agreementId: Long) =
+        leaseAgreementDao.getAgreementById(agreementId)
+
+    // Tenant Operations (existing)
+    fun getTenantById(tenantId: Long): Flow<Tenant?> =
+        tenantDao.getTenantById(tenantId)
+
+    suspend fun getActiveTenantName(shopId: Long): String? {
+        val agreement = leaseAgreementDao.getActiveAgreementForShop(shopId)
+        return agreement?.tenantId?.let { tenantId ->
+            tenantDao.getTenantById(tenantId).firstOrNull()?.fullName
+        }
+    }
+
+
+    suspend fun updateShop(shop: Shop) = shopDao.update(shop)
+
+
+    // Insert activity
+    suspend fun addActivity(message: String) {
+        activityLogDao.insert(ActivityLog(message = message))
+    }
+
+    // Fetch recent activities
+    fun getRecentActivities(): Flow<List<ActivityLog>> = activityLogDao.getRecentActivities()
+
+    fun getActivitiesBetween(startDate: Long, endDate: Long): Flow<List<ActivityLog>> {
+        return activityLogDao.getActivitiesBetween(startDate, endDate)
+    }
+
+    suspend fun updateTenant(tenant: Tenant) = tenantDao.update(tenant)
+
+    suspend fun deleteTenant(tenant: Tenant) = tenantDao.delete(tenant)
+
 }
 
 data class DashboardStats(
@@ -153,4 +311,22 @@ data class RentDueReminder(
     val tenant: Tenant,
     val dueDate: Date,
     val daysOverdue: Long
+)
+
+enum class RentStatus { PAID, PARTIAL, UNPAID }
+
+data class MonthRentRecord(
+    val month: Int,         // 1..12
+    val year: Int,
+    val rent: Double,       // monthlyRent
+    val paid: Double,       // total paid for this month
+    val remaining: Double,  // max(rent - paid, 0)
+    val status: RentStatus  // PAID | PARTIAL | UNPAID
+)
+
+data class RentSummary(
+    val currentRemaining: Double,     // Remaining for as-of month (if within agreement)
+    val previousPendingTotal: Double, // Sum of remaining for months strictly before as-of month
+    val totalRemaining: Double,       // previousPendingTotal + currentRemaining
+    val records: List<MonthRentRecord>
 )

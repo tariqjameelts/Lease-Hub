@@ -3,6 +3,7 @@ package com.mindblowers.leasehub.data.dao
 import com.mindblowers.leasehub.data.entities.Shop
 import com.mindblowers.leasehub.data.entities.ShopStatus
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
@@ -19,8 +20,11 @@ interface ShopDao {
     @Update
     suspend fun update(shop: Shop)
 
+    @Delete
+    suspend fun delete(shop: Shop)
+
     @Query("SELECT * FROM shops WHERE id = :id")
-    suspend fun getShopById(id: Long): Shop?
+     fun getShopById(id: Long): Flow<Shop?>
 
     @Transaction
     @Query("SELECT * FROM shops WHERE isActive = 1")

@@ -3,7 +3,9 @@ package com.mindblowers.leasehub.di
 import android.content.Context
 import com.mindblowers.leasehub.data.AppDatabase
 import com.mindblowers.leasehub.data.dao.*
+import com.mindblowers.leasehub.data.prefs.AppPrefs
 import com.mindblowers.leasehub.data.repository.AppRepository
+import com.mindblowers.leasehub.data.repository.AuthRepository
 import com.mindblowers.leasehub.utils.BackupManager
 import com.mindblowers.leasehub.utils.SecurityUtils
 import dagger.Module
@@ -17,11 +19,21 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
+
+
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
         return AppDatabase.getDatabase(context)
     }
+
+    @Provides
+    @Singleton
+    fun providePrefs(@ApplicationContext context: Context): AppPrefs{
+        return AppPrefs(context)
+    }
+    @Provides
+    fun provideActivityLogDao(database: AppDatabase): ActivityLogDao = database.activityLogDao()
 
     // DAO Providers
     @Provides
@@ -33,6 +45,11 @@ object AppModule {
     @Provides
     fun provideTenantDao(database: AppDatabase): TenantDao = database.tenantDao()
 
+    @Provides
+    @Singleton
+    fun provideAuthRepository(userDao: UserDao):AuthRepository{
+        return AuthRepository(userDao)
+    }
     @Provides
     fun provideLeaseAgreementDao(database: AppDatabase): LeaseAgreementDao = database.leaseAgreementDao()
 
@@ -51,9 +68,10 @@ object AppModule {
         tenantDao: TenantDao,
         leaseAgreementDao: LeaseAgreementDao,
         rentPaymentDao: RentPaymentDao,
-        expenseDao: ExpenseDao
+        expenseDao: ExpenseDao,
+        activityLogDao: ActivityLogDao // inject here
     ): AppRepository {
-        return AppRepository(userDao, shopDao, tenantDao, leaseAgreementDao, rentPaymentDao, expenseDao)
+        return AppRepository(userDao, shopDao, tenantDao, leaseAgreementDao, rentPaymentDao, expenseDao, activityLogDao)
     }
 
     // Utility Providers

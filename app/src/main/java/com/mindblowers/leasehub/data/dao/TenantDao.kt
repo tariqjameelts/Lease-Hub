@@ -1,6 +1,7 @@
 package com.mindblowers.leasehub.data.dao
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
@@ -15,8 +16,11 @@ interface TenantDao {
     @Update
     suspend fun update(tenant: Tenant)
 
+    @Delete
+    suspend fun delete(tenant: Tenant)
+
     @Query("SELECT * FROM tenants WHERE id = :id")
-    suspend fun getTenantById(id: Long): Tenant?
+    fun getTenantById(id: Long): Flow<Tenant?>
 
     @Query("SELECT * FROM tenants WHERE isActive = 1 ORDER BY fullName")
     fun getAllTenants(): Flow<List<Tenant>>

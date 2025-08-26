@@ -19,7 +19,7 @@ data class Tenant(
     val emergencyPhone: String? = null,
     val address: String,
     val companyName: String? = null,
-    val businessType: String,
+    val businessType: String? = null,
     @TypeConverters(DateConverter::class)
     val createdAt: Date = Date(),
     val notes: String? = null,

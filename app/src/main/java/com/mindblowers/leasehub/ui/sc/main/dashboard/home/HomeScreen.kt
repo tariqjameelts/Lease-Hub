@@ -2,29 +2,48 @@ package com.mindblowers.leasehub.ui.sc.main.dashboard.home
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.mindblowers.leasehub.data.entities.ActivityLog
+import com.mindblowers.leasehub.data.entities.Shop
+import com.mindblowers.leasehub.data.entities.ShopStatus
 import com.mindblowers.leasehub.data.repository.RentDueReminder
-import com.mindblowers.leasehub.ui.sc.main.dashboard.DashboardActivity
 import com.mindblowers.leasehub.ui.sc.main.dashboard.DashboardViewModel
 import java.text.SimpleDateFormat
 import java.util.*
+
+
 
 @Composable
 fun HomeScreen(viewModel: DashboardViewModel) {
     val stats by viewModel.dashboardStats.collectAsState()
     val reminders by viewModel.rentDueReminders.collectAsState()
     val activities by viewModel.recentActivity.collectAsState()
+    val shops by viewModel.shops.collectAsState()
 
     var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { visible = true }
+    var dialogState by remember { mutableStateOf<DialogType?>(null) }
+
+    LaunchedEffect(Unit) {
+        visible = true
+        viewModel.loadDashboardData()
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -32,7 +51,7 @@ fun HomeScreen(viewModel: DashboardViewModel) {
             .fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Summary section
+        // 📊 Summary section
         item {
             AnimatedVisibility(
                 visible = visible,
@@ -45,65 +64,93 @@ fun HomeScreen(viewModel: DashboardViewModel) {
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        SummaryCard("Total Shops", stats?.totalShops?.toString() ?: "-", Icons.Default.Create)
-                        SummaryCard("Vacant Shops", stats?.vacantShops?.toString() ?: "-", Icons.Default.Create)
+                        SummaryCard("Total Shops", stats?.totalShops?.toString() ?: "-", Icons.Default.Close) {
+                            dialogState = DialogType.TotalShops(shops)
+                        }
+                        SummaryCard("Vacant Shops", stats?.vacantShops?.toString() ?: "-", Icons.Default.Close) {
+                            dialogState = DialogType.VacantShops(shops.filter { it.status == ShopStatus.VACANT })
+                        }
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        SummaryCard("Active Tenants", stats?.activeTenants?.toString() ?: "-", Icons.Default.Create)
-                        SummaryCard("Net Profit", stats?.netProfit?.toString() ?: "-", Icons.Default.Create)
+                        SummaryCard("Active Tenants", stats?.activeTenants?.toString() ?: "-", Icons.Default.Close) {
+                            dialogState = DialogType.ActiveTenants(stats?.activeTenants ?: 0)
+                        }
+                        SummaryCard("Net Profit", stats?.netProfit?.toString() ?: "-", Icons.Default.Close) {
+                            dialogState = DialogType.NetProfit(stats?.netProfit ?: 0.0)
+                        }
                     }
                 }
             }
         }
 
-        // Rent Reminders
+        // 📌 Rent Reminders
         item { Text("Rent Due Reminders", style = MaterialTheme.typography.titleMedium) }
         if (reminders.isEmpty()) {
             item {
-                AnimatedVisibility(visible = visible, enter = fadeIn() + slideInVertically()) {
-                    Text("✅ No pending rents", modifier = Modifier.padding(8.dp))
-                }
+                Text("✅ No pending rents", modifier = Modifier.padding(8.dp))
             }
         } else {
-            itemsIndexed(reminders) { index, reminder ->
-                RentReminderCard(reminder, index, visible)
+            itemsIndexed(reminders.take(3)) { index, reminder ->
+                RentReminderCard(reminder, index, visible) {
+                    dialogState = DialogType.RentReminders(reminders)
+                }
+            }
+            if (reminders.size > 3) {
+                item {
+                    TextButton(onClick = { dialogState = DialogType.RentReminders(reminders) }) {
+                        Text("View All Reminders (${reminders.size})")
+                    }
+                }
             }
         }
 
-        // Recent Activity
+        // 🕒 Recent Activity
         item { Text("Recent Activity", style = MaterialTheme.typography.titleMedium) }
         if (activities.isEmpty()) {
-            item {
-                AnimatedVisibility(visible = visible, enter = fadeIn() + slideInVertically()) {
-                    Text("No recent activity yet.", modifier = Modifier.padding(8.dp))
+            item { Text("No recent activity yet.", modifier = Modifier.padding(8.dp)) }
+        } else {
+            itemsIndexed(activities.take(10)) { index, activity ->
+                RecentActivityCard(activity, index, visible) {
+                    dialogState = DialogType.RecentActivities(activities)
                 }
             }
-        } else {
-            itemsIndexed(activities) { index, activity ->
-                RecentActivityCard(activity, index, visible)
-            }
         }
+    }
+
+    // ✅ Render dialogs
+    when (val state = dialogState) {
+        is DialogType.TotalShops -> ShopsDialog("All Shops", state.shops) { dialogState = null }
+        is DialogType.VacantShops -> ShopsDialog("Vacant Shops", state.shops) { dialogState = null }
+        is DialogType.ActiveTenants -> InfoDialog("Active Tenants", "${state.count} tenants active") { dialogState = null }
+        is DialogType.NetProfit -> InfoDialog("Net Profit", "Total: ₹${state.amount}") { dialogState = null }
+        is DialogType.RentReminders -> RemindersDialog(state.reminders) { dialogState = null }
+        is DialogType.RecentActivities -> ActivitiesDialog(state.activities) { dialogState = null }
+        null -> {}
     }
 }
 
 @Composable
-fun SummaryCard(title: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+fun SummaryCard(
+    title: String,
+    value: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
     Card(
         modifier = Modifier
             .width(160.dp)
-            .padding(4.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            .padding(4.dp)
+            .clickable { onClick() },
+        elevation = CardDefaults.cardElevation(4.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(8.dp))
@@ -113,44 +160,49 @@ fun SummaryCard(title: String, value: String, icon: androidx.compose.ui.graphics
     }
 }
 
-
 @Composable
-fun RentReminderCard(reminder: RentDueReminder, index: Int, visible: Boolean) {
+fun RentReminderCard(reminder: RentDueReminder, index: Int, visible: Boolean, onClick: () -> Unit) {
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(animationSpec = tween(400, delayMillis = index * 100)) +
                 slideInVertically(initialOffsetY = { 50 }, animationSpec = tween(400, delayMillis = index * 100))
     ) {
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() },
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text("Shop: ${reminder.shop.shopNumber}", style = MaterialTheme.typography.bodyLarge)
-                Text("Tenant: ${reminder.tenant.fullName}")
-                Text("Due: ${reminder.dueDate}")
-                Text("Overdue: ${reminder.daysOverdue} days")
+            Row(modifier = Modifier.padding(12.dp)) {
+                Icon(Icons.Default.Warning, contentDescription = "Reminder", tint = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text("Shop: ${reminder.shop.shopNumber}", style = MaterialTheme.typography.bodyLarge)
+                    Text("Tenant: ${reminder.tenant.fullName}")
+                    Text("Due: ${reminder.dueDate}")
+                    Text("Overdue: ${reminder.daysOverdue} days")
+                }
             }
         }
     }
 }
 
 @Composable
-fun RecentActivityCard(activity: DashboardActivity, index: Int, visible: Boolean) {
+fun RecentActivityCard(activity: ActivityLog, index: Int, visible: Boolean, onClick: () -> Unit) {
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(animationSpec = tween(400, delayMillis = index * 100)) +
                 slideInVertically(initialOffsetY = { 50 }, animationSpec = tween(400, delayMillis = index * 100))
     ) {
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() },
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Row(
-                modifier = Modifier
-                    .padding(12.dp)
-                    .fillMaxWidth(),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween
+                modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(activity.message, style = MaterialTheme.typography.bodyMedium)
                 Text(
@@ -163,3 +215,216 @@ fun RecentActivityCard(activity: DashboardActivity, index: Int, visible: Boolean
     }
 }
 
+
+
+sealed class DialogType {
+    data class TotalShops(val shops: List<Shop>) : DialogType()
+    data class VacantShops(val shops: List<Shop>) : DialogType()
+    data class ActiveTenants(val count: Int) : DialogType()
+    data class NetProfit(val amount: Double) : DialogType()
+    data class RentReminders(val reminders: List<RentDueReminder>) : DialogType()
+    data class RecentActivities(val activities: List<ActivityLog>) : DialogType()
+}
+
+
+
+@Composable
+fun ShopsDialog(title: String, shops: List<Shop>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .height(350.dp)
+                    .padding(4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(shops) { shop ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Shop #${shop.shopNumber}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = shop.status.name.replace("_", " ").capitalize(Locale.getDefault()),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = when (shop.status) {
+                                    ShopStatus.VACANT -> Color(0xFF388E3C)
+                                    ShopStatus.OCCUPIED -> Color(0xFF1976D2)
+                                    ShopStatus.RESERVED -> Color(0xFFFBC02D)
+                                    ShopStatus.UNDER_MAINTENANCE -> Color(0xFFD32F2F)
+                                },
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+fun InfoDialog(title: String, message: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                elevation = CardDefaults.cardElevation(4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = message,
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } }
+    )
+}
+
+@Composable
+fun RemindersDialog(reminders: List<RentDueReminder>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Rent Reminders",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .height(350.dp)
+                    .padding(4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(reminders) { reminder ->
+                    ReminderItem(reminder)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+fun ReminderItem(reminder: RentDueReminder) {
+    val isOverdue = reminder.dueDate.before(Date())
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isOverdue) Color(0xFFFFEBEE) else Color(0xFFE3F2FD)
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Shop: ${reminder.shop.shopNumber}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = if (isOverdue) "Overdue" else "Upcoming",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isOverdue) Color.Red else Color(0xFF388E3C),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Tenant: ${reminder.tenant.fullName}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Due: ${reminder.dueDate}",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isOverdue) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+fun ActivitiesDialog(activities: List<ActivityLog>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Recent Activities",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .height(350.dp)
+                    .padding(4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(activities) { act ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(3.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = act.message,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = SimpleDateFormat("MMM dd", Locale.getDefault()).format(act.timestamp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}

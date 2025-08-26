@@ -45,7 +45,7 @@ fun OnboardingScreen(navController: NavHostController) {
                 title = { Text("Welcome to Lease Hub") },
                 actions = {
                     if (pagerState.currentPage < pages.size - 1) {
-                        TextButton(onClick = { navController.navigate("login") }) {
+                        TextButton(onClick = { navController.navigate("signup") }) {
                             Text("Skip")
                         }
                     }
@@ -84,7 +84,7 @@ fun OnboardingScreen(navController: NavHostController) {
                     if (pagerState.currentPage < pages.size - 1) {
                         scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
                     } else {
-                        navController.navigate("login")
+                        navController.navigate("signup")
                     }
                 }) {
                     Text(if (pagerState.currentPage == pages.size - 1) "Get Started" else "Next")

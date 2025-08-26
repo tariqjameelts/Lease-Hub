@@ -1,72 +1,90 @@
 package com.mindblowers.leasehub.ui.sc.auth.signup
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import android.widget.Toast
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavHostController
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.mindblowers.leasehub.data.entities.User
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SignUpScreen(navController: NavHostController) {
+fun SignUpScreen(
+    viewModel: AuthViewModel = hiltViewModel(),
+    onSignUpSuccess: () -> Unit
+) {
+    val context = LocalContext.current
     var fullName by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
+    val isLoading by viewModel.isLoading.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
 
-    Scaffold(
-        topBar = { CenterAlignedTopAppBar(title = { Text("Sign Up") }) }
-    ) { padding ->
+    LaunchedEffect(errorMessage) {
+        errorMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
         Column(
-            Modifier
-                .padding(padding)
-                .padding(16.dp)
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            OutlinedTextField(
-                value = fullName, onValueChange = { fullName = it },
-                label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth()
+            Text(
+                text = "Create Account",
+                style = MaterialTheme.typography.headlineMedium
             )
+
             OutlinedTextField(
-                value = username, onValueChange = { username = it },
-                label = { Text("Username") }, modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = password, onValueChange = { password = it },
-                label = { Text("Password") },
-                visualTransformation = PasswordVisualTransformation(),
+                value = fullName,
+                onValueChange = { fullName = it },
+                label = { Text("Full Name") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                    keyboardType = KeyboardType.Text
+                ),
                 modifier = Modifier.fillMaxWidth()
             )
-            OutlinedTextField(
-                value = confirmPassword, onValueChange = { confirmPassword = it },
-                label = { Text("Confirm Password") },
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(16.dp))
+
             Button(
-                onClick = { navController.navigate("login") },
+                onClick = {
+                    if (fullName.isNotBlank()) {
+                        val user = User(fullName = fullName)
+                        viewModel.signUp(user) { success ->
+                            if (success) {
+                                onSignUpSuccess()
+                            }
+                        }
+                    } else {
+                        Toast.makeText(context, "Please enter your full name", Toast.LENGTH_SHORT).show()
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = username.isNotBlank() && password == confirmPassword
+                enabled = !isLoading
             ) {
-                Text("Sign Up")
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("Sign Up")
+                }
             }
         }
     }
 }
+
