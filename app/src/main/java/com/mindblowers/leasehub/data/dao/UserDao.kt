@@ -17,6 +17,10 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE id = :id")
     suspend fun getUserById(id: Long): User?
 
+    @Query("UPDATE users SET isActive = 0")
+    suspend fun deactivateAllUsers()
+
+
     @Update
     suspend fun update(user: User)
 

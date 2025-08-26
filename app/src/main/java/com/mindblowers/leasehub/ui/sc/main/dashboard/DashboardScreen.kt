@@ -89,7 +89,11 @@ fun DashboardScreen(
                 1 -> ShopListScreen(navController)
                 2 -> TenantsScreen(navController)
                 3 -> ReportsScreen(navController)
-                4 -> SettingsScreen { }
+                4 -> SettingsScreen {
+                    navController.navigate("signup") {
+                        popUpTo("dashboard") { inclusive = true }
+                    }
+                }
             }
         }
         if (showAddShopSheet) {

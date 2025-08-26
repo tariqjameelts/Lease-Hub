@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mindblowers.leasehub.data.entities.User
 import com.mindblowers.leasehub.data.prefs.AppPrefs
+import com.mindblowers.leasehub.data.repository.AppRepository
 import com.mindblowers.leasehub.data.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,10 +14,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val repository: AuthRepository,
+    private val appRepo: AppRepository,
     val appPrefs: AppPrefs
 ) : ViewModel() {
 
@@ -33,11 +34,20 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _isLoading.value = true
-                val userId = repository.insertUser(user)
+
+                // ✅ First deactivate any existing active users (only one active user at a time)
+                repository.deactivateAllUsers()
+
+                // ✅ Insert new user with active = true
+                val activeUser = user.copy(isActive = true)
+                val userId = repository.insertUser(activeUser)
                 if (userId > 0) {
                     val savedUser = repository.getUserById(userId)
                     _userState.value = savedUser
-                    savedUser?.let { appPrefs.saveUserSession(it.id) }
+
+                    // ✅ Save session for persistence
+                    appPrefs.saveUserSession(userId, isNewUser = false)
+                    setCurrentUser(userId)
                     onResult(true)
                 } else {
                     _errorMessage.value = "Failed to create user"
@@ -51,4 +61,33 @@ class AuthViewModel @Inject constructor(
             }
         }
     }
+
+    // ✅ Expose repository method for external checks (like AppNavHost)
+    suspend fun getUserById(id: Long): User? {
+        return repository.getUserById(id)
+    }
+
+    // ✅ Clear current user session everywhere
+    fun clearCurrentUser() {
+        viewModelScope.launch {
+            try {
+                appPrefs.clearSession()
+                appRepo.clearCurrentUser()
+                _userState.value = null
+            } catch (e: Exception) {
+                _errorMessage.value = e.message
+            }
+        }
+    }
+
+    fun setCurrentUser(userId: Long){
+        viewModelScope.launch {
+            try {
+                appRepo.setCurrentUser(userId)
+            } catch (e: Exception) {
+                _errorMessage.value = e.message
+            }
+        }
+    }
+
 }

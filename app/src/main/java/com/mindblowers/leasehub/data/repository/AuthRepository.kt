@@ -16,4 +16,9 @@ class AuthRepository @Inject constructor(
     }
 
 
+    suspend fun deactivateAllUsers() {
+        userDao.deactivateAllUsers()
+    }
+
+
 }

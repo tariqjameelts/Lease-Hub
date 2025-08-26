@@ -17,6 +17,8 @@ import com.mindblowers.leasehub.data.entities.ShopStatus
 import com.mindblowers.leasehub.data.entities.Tenant
 import com.mindblowers.leasehub.data.entities.User
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import java.util.Calendar
@@ -32,11 +34,33 @@ class AppRepository @Inject constructor(
     private val expenseDao: ExpenseDao,
     private val activityLogDao: ActivityLogDao
 ) {
+
+    // ✅ Store current logged-in user
+    private val _currentUser = MutableStateFlow<User?>(null)
+    val currentUser: StateFlow<User?> = _currentUser
+
+    suspend fun setCurrentUser(userId: Long) {
+        val user = getUserById(userId)
+        _currentUser.value = user
+    }
+
+    fun clearCurrentUser() {
+        _currentUser.value = null
+    }
     // User Operations
     suspend fun createUser(user: User) = userDao.insert(user)
     suspend fun getUserByUsername(username: String) = userDao.getUserByUsername(username)
     suspend fun updateUserLastLogin(userId: Long, loginTime: Long) =
         userDao.updateLastLogin(userId, loginTime)
+    suspend fun updateUser(user: User?) {
+        if (user == null) return
+        userDao.update(user)
+    }
+    // AppRepository.kt
+    suspend fun getUserById(userId: Long): User? {
+        return userDao.getUserById(userId)
+    }
+
 
     // Shop Operations
     suspend fun insertShop(shop: Shop) = shopDao.insert(shop)

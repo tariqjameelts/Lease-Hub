@@ -46,6 +46,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun activityLogDao(): ActivityLogDao
 
     companion object {
+        const val VERSION: Int = 2
         @Volatile
         private var INSTANCE: AppDatabase? = null
 

@@ -1,8 +1,10 @@
+// com.mindblowers.leasehub.utils.BackupManager
+
 package com.mindblowers.leasehub.utils
 
 import android.content.Context
 import android.net.Uri
-import androidx.core.net.toUri
+import androidx.annotation.WorkerThread
 import com.mindblowers.leasehub.data.AppDatabase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -20,155 +22,155 @@ class BackupManager @Inject constructor(
 ) {
 
     companion object {
-        private const val BACKUP_DIRECTORY = "leasehub_backups"
-        private const val BACKUP_FILE_PREFIX = "leasehub_backup_"
-        private const val BACKUP_FILE_EXTENSION = ".db"
+        private const val INTERNAL_BACKUP_DIR = "leasehub_backups"
+        private const val PREFIX = "leasehub_backup_"
+        private const val EXT = ".db"
+        private const val DB_NAME = "shop_leasing_db"
     }
 
-    /**
-     * Creates a backup of the database
-     * @return File object pointing to the backup file, or null if backup failed
-     */
-    suspend fun createBackup(): File? = withContext(Dispatchers.IO) {
+    // ----- Filename helpers -----
+
+    private fun nowStamp(): String =
+        SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+
+    fun suggestedBackupFileName(): String =
+        "${PREFIX}${nowStamp()}_v${AppDatabase.VERSION}$EXT"
+
+    /** Example: leasehub_backup_20250826_101010_v2.db -> 2  (null if parse fails) */
+    private fun parseSchemaFromName(name: String): Int? {
+        val idx = name.lastIndexOf("_v")
+        if (idx == -1 || !name.endsWith(EXT)) return null
+        val verPart = name.substring(idx + 2, name.length - EXT.length)
+        return verPart.toIntOrNull()
+    }
+
+    fun isLikelyLeaseHubBackup(name: String): Boolean =
+        name.startsWith(PREFIX) && name.endsWith(EXT)
+
+    // ----- Internal create/list/delete -----
+
+    /** Creates an internal (app-private external) backup file. */
+    suspend fun createInternalBackup(): File? = withContext(Dispatchers.IO) {
         try {
-            // Create backup directory if it doesn't exist
-            val backupDir = File(context.getExternalFilesDir(null), BACKUP_DIRECTORY)
-            if (!backupDir.exists()) {
-                backupDir.mkdirs()
-            }
+            val backupDir = File(context.getExternalFilesDir(null), INTERNAL_BACKUP_DIR)
+            if (!backupDir.exists()) backupDir.mkdirs()
 
-            // Generate backup filename with timestamp
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val backupFile = File(backupDir, "${BACKUP_FILE_PREFIX}$timestamp$BACKUP_FILE_EXTENSION")
+            val out = File(backupDir, suggestedBackupFileName())
 
-            // Perform database vacuum and backup
             database.openHelper.writableDatabase.let { db ->
-                // Vacuum the database to optimize it before backup
+                // Optional: shrink & clean
                 db.execSQL("VACUUM")
-
-                // Copy the database file
-                val originalDbFile = File(db.path)
-                originalDbFile.copyTo(backupFile, overwrite = true)
+                val source = File(db.path)
+                source.copyTo(out, overwrite = true)
             }
-
-            backupFile
+            out
         } catch (e: Exception) {
             e.printStackTrace()
             null
         }
     }
 
-    /**
-     * Restores the database from a backup file
-     * @param backupUri The URI of the backup file to restore from
-     * @return True if restore was successful, false otherwise
-     */
-    suspend fun restoreBackup(backupUri: Uri): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val backupFile = getFileFromUri(backupUri) ?: return@withContext false
-            val dbFile = context.getDatabasePath("shop_leasing_db")
-
-            // Close the database before restore
-            database.close()
-
-            // Copy backup file to database location
-            backupFile.copyTo(dbFile, overwrite = true)
-
-            // Reopen the database
-            database.openHelper.writableDatabase
-
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
-    }
-
-    /**
-     * Gets a list of all available backup files
-     * @return List of backup files sorted by date (newest first)
-     */
-    fun getAvailableBackups(): List<File> {
-        val backupDir = File(context.getExternalFilesDir(null), BACKUP_DIRECTORY)
-        if (!backupDir.exists() || !backupDir.isDirectory) {
-            return emptyList()
-        }
-
-        return backupDir.listFiles { file ->
-            file.name.startsWith(BACKUP_FILE_PREFIX) && file.name.endsWith(BACKUP_FILE_EXTENSION)
+    fun getInternalBackups(): List<File> {
+        val dir = File(context.getExternalFilesDir(null), INTERNAL_BACKUP_DIR)
+        if (!dir.exists() || !dir.isDirectory) return emptyList()
+        return dir.listFiles { f ->
+            f.isFile && isLikelyLeaseHubBackup(f.name)
         }?.sortedByDescending { it.lastModified() } ?: emptyList()
     }
 
-    /**
-     * Deletes a specific backup file
-     * @param backupFile The backup file to delete
-     * @return True if deletion was successful, false otherwise
-     */
-    fun deleteBackup(backupFile: File): Boolean {
-        return try {
-            backupFile.delete()
-        } catch (e: Exception) {
-            false
-        }
+    fun deleteInternalBackup(file: File): Boolean = try { file.delete() } catch (_: Exception) { false }
+
+    fun getReadableFileSize(bytes: Long): String = when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        bytes < 1024L * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
+        else -> "${bytes / (1024L * 1024 * 1024)} GB"
     }
 
-    /**
-     * Deletes all backup files
-     * @return Number of backup files successfully deleted
-     */
-    fun deleteAllBackups(): Int {
-        val backups = getAvailableBackups()
-        var deletedCount = 0
+    // ----- SAF Export / Import -----
 
-        backups.forEach { backup ->
-            if (backup.delete()) {
-                deletedCount++
+    /**
+     * Copy an internal backup file to a user-selected SAF Uri (Export).
+     */
+    suspend fun exportBackupToUri(internalBackup: File, destUri: Uri): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!internalBackup.exists()) return@withContext false
+            try {
+                context.contentResolver.openOutputStream(destUri, "w")?.use { out ->
+                    FileInputStream(internalBackup).use { input ->
+                        input.copyTo(out)
+                        out.flush()
+                    }
+                } ?: return@withContext false
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
             }
         }
 
-        return deletedCount
-    }
-
     /**
-     * Gets the size of all backup files
-     * @return Total size of all backups in bytes
+     * Restore DB from a user-selected SAF Uri (Import + Overwrite).
+     * Validates filename convention and optionally schema version.
+     * Overwrites the *entire* database file.
      */
-    fun getTotalBackupSize(): Long {
-        return getAvailableBackups().sumOf { it.length() }
-    }
-
-    /**
-     * Converts URI to File object
-     */
-    private fun getFileFromUri(uri: Uri): File? {
-        return try {
-            when (uri.scheme) {
-                "file" -> File(uri.path!!)
-                "content" -> {
-                    context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                        val tempFile = File.createTempFile("restore_temp", ".db")
-                        FileOutputStream(tempFile).use { outputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
-                        tempFile
+    suspend fun restoreFromUri(backupUri: Uri, pickedDisplayName: String? = null): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                // Best-effort filename validation (some pickers won’t give us display name).
+                pickedDisplayName?.let { name ->
+                    if (!isLikelyLeaseHubBackup(name)) return@withContext false
+                    val schema = parseSchemaFromName(name)
+                    // Hard fail if schema mismatch. You can soften this if you support migrations.
+                    if (schema != null && schema != AppDatabase.VERSION) {
+                        return@withContext false
                     }
                 }
-                else -> null
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
 
-    /**
-     * Gets a readable backup file size string
-     */
-    fun getReadableFileSize(sizeInBytes: Long): String {
-        return when {
-            sizeInBytes < 1024 -> "$sizeInBytes B"
-            sizeInBytes < 1024 * 1024 -> "${sizeInBytes / 1024} KB"
-            sizeInBytes < 1024 * 1024 * 1024 -> "${sizeInBytes / (1024 * 1024)} MB"
-            else -> "${sizeInBytes / (1024 * 1024 * 1024)} GB"
+                val dbFile = context.getDatabasePath(DB_NAME)
+
+                // Close Room database before overwriting the file
+                database.close()
+
+                // Copy from SAF Uri -> DB location
+                context.contentResolver.openInputStream(backupUri)?.use { input ->
+                    FileOutputStream(dbFile, false).use { output ->
+                        input.copyTo(output)
+                        output.flush()
+                    }
+                } ?: return@withContext false
+
+                // Reopen database (ensures AppDatabase is usable again)
+                database.openHelper.writableDatabase
+
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
         }
-    }
+
+    // Optional: internal restore (from a File already in internal backup dir)
+    suspend fun restoreFromInternalFile(file: File): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                if (!file.exists() || !isLikelyLeaseHubBackup(file.name)) return@withContext false
+                val schema = parseSchemaFromName(file.name)
+                if (schema != null && schema != AppDatabase.VERSION) return@withContext false
+
+                val dbFile = context.getDatabasePath(DB_NAME)
+                database.close()
+                FileInputStream(file).use { input ->
+                    FileOutputStream(dbFile, false).use { output ->
+                        input.copyTo(output)
+                        output.flush()
+                    }
+                }
+                database.openHelper.writableDatabase
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
+        }
 }

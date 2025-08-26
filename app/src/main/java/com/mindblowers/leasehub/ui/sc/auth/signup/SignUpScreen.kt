@@ -20,7 +20,10 @@ fun SignUpScreen(
     onSignUpSuccess: () -> Unit
 ) {
     val context = LocalContext.current
+
     var fullName by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
 
@@ -28,6 +31,27 @@ fun SignUpScreen(
         errorMessage?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    fun validateForm(): Boolean {
+        if (fullName.isBlank()) {
+            Toast.makeText(context, "Please enter your full name", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        if (username.isBlank()) {
+            Toast.makeText(context, "Please enter a username", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        val regex = Regex("^[a-z_]+$")
+        if (!regex.matches(username)) {
+            Toast.makeText(
+                context,
+                "Username must contain only lowercase English letters and underscores",
+                Toast.LENGTH_LONG
+            ).show()
+            return false
+        }
+        return true
     }
 
     Box(
@@ -58,17 +82,30 @@ fun SignUpScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Username") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    keyboardType = KeyboardType.Ascii
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Button(
                 onClick = {
-                    if (fullName.isNotBlank()) {
-                        val user = User(fullName = fullName)
+                    if (validateForm()) {
+                        val user = User(
+                            fullName = fullName,
+                            username = username
+                        )
                         viewModel.signUp(user) { success ->
                             if (success) {
                                 onSignUpSuccess()
                             }
                         }
-                    } else {
-                        Toast.makeText(context, "Please enter your full name", Toast.LENGTH_SHORT).show()
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -87,4 +124,3 @@ fun SignUpScreen(
         }
     }
 }
-
