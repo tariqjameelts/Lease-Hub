@@ -24,24 +24,24 @@ interface ShopDao {
     suspend fun delete(shop: Shop)
 
     @Query("SELECT * FROM shops WHERE id = :id")
-     fun getShopById(id: Long): Flow<Shop?>
-
-    @Transaction
-    @Query("SELECT * FROM shops WHERE isActive = 1")
-    fun getShopsWithRelations(): Flow<List<ShopWithRelations>>
-
-    @Query("SELECT * FROM shops WHERE isActive = 1 ORDER BY buildingName, floor, shopNumber")
-    fun getAllShops(): Flow<List<Shop>>
-
-    @Query("SELECT * FROM shops WHERE status = :status AND isActive = 1")
-    fun getShopsByStatus(status: ShopStatus): Flow<List<Shop>>
+    fun getShopById(id: Long): Flow<Shop?>
 
     @Query("UPDATE shops SET status = :status WHERE id = :shopId")
     suspend fun updateShopStatus(shopId: Long, status: ShopStatus)
 
-    @Query("SELECT COUNT(*) FROM shops WHERE status = 'VACANT' AND isActive = 1")
-    suspend fun getVacantShopCount(): Int
+    @Transaction
+    @Query("SELECT * FROM shops WHERE isActive = 1 AND userId = :userId")
+    fun getShopsWithRelations(userId: Long): Flow<List<ShopWithRelations>>
 
-    @Query("SELECT COUNT(*) FROM shops WHERE status = 'OCCUPIED' AND isActive = 1")
-    suspend fun getOccupiedShopCount(): Int
+    @Query("SELECT * FROM shops WHERE isActive = 1 AND userId = :userId ORDER BY buildingName, floor, shopNumber")
+    fun getAllShops(userId: Long): Flow<List<Shop>>
+
+    @Query("SELECT * FROM shops WHERE status = :status AND isActive = 1 AND userId = :userId")
+    fun getShopsByStatus(userId: Long, status: ShopStatus): Flow<List<Shop>>
+
+    @Query("SELECT COUNT(*) FROM shops WHERE status = 'VACANT' AND isActive = 1 AND userId = :userId")
+    suspend fun getVacantShopCount(userId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM shops WHERE status = 'OCCUPIED' AND isActive = 1 AND userId = :userId")
+    suspend fun getOccupiedShopCount(userId: Long): Int
 }

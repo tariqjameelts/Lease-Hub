@@ -62,6 +62,14 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun signIn(userName: String, onResult: (Boolean) -> Unit){
+        viewModelScope.launch {
+            repository.activateUserByUsername(userName){
+                onResult(it)
+            }
+        }
+    }
+
     // ✅ Expose repository method for external checks (like AppNavHost)
     suspend fun getUserById(id: Long): User? {
         return repository.getUserById(id)

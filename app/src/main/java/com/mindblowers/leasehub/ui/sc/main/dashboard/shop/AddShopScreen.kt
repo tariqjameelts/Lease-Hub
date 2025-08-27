@@ -7,11 +7,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mindblowers.leasehub.data.entities.Shop
 import com.mindblowers.leasehub.data.entities.ShopStatus
+import com.mindblowers.leasehub.data.prefs.AppPrefs
 import com.mindblowers.leasehub.ui.sc.components.ConfirmationDialog
 import com.mindblowers.leasehub.ui.sc.main.dashboard.DashboardViewModel
 import java.util.Date
@@ -20,10 +22,16 @@ import java.util.Date
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditShopBottomSheet(
-    shop: Shop = Shop(), // default empty means "Add"
     onDismiss: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
+    // --- Get userId from AppPrefs ---
+
+   val userId by remember { mutableStateOf(viewModel.userId) }
+
+
+    val  shop by remember { mutableStateOf(Shop(userId = userId!!)) }
+
     // Check if this is a new shop or existing one
     val isNewShop = shop.id == 0L
 

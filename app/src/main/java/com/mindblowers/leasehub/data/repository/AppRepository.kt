@@ -64,42 +64,42 @@ class AppRepository @Inject constructor(
 
     // Shop Operations
     suspend fun insertShop(shop: Shop) = shopDao.insert(shop)
-    fun getAllShops() = shopDao.getAllShops()
-    fun getShopsByStatus(status: ShopStatus) = shopDao.getShopsByStatus(status)
+    fun getAllShops(userId: Long) = shopDao.getAllShops(userId)
+    fun getShopsByStatus(userId: Long,status: ShopStatus) = shopDao.getShopsByStatus(userId,status)
 
     // Tenant Operations
     suspend fun insertTenant(tenant: Tenant) :Long = tenantDao.insert(tenant)
-    fun getAllTenants() = tenantDao.getAllTenants()
-    suspend fun deactivateTenant(tenantId: Long) = tenantDao.deactivateTenant(tenantId)
+    fun getAllTenants(userId: Long) = tenantDao.getAllTenants(userId)
+    suspend fun deactivateTenant(userId: Long,tenantId: Long) = tenantDao.deactivateTenant(userId,tenantId)
 
     // Lease Agreement Operations
     suspend fun insertLeaseAgreement(agreement: LeaseAgreement) = leaseAgreementDao.insert(agreement)
-    suspend fun getAgreementWithDetails(agreementId: Long) =
-        leaseAgreementDao.getAgreementWithDetails(agreementId)
-    fun getActiveAgreementsWithDetails() = leaseAgreementDao.getActiveAgreementsWithDetails()
-    suspend fun getActiveAgreementForShop(shopId: Long) =
-        leaseAgreementDao.getActiveAgreementForShop(shopId)
+    suspend fun getAgreementWithDetails(userId: Long,agreementId: Long) =
+        leaseAgreementDao.getAgreementWithDetails(userId,agreementId)
+    fun getActiveAgreementsWithDetails(userId: Long) = leaseAgreementDao.getActiveAgreementsWithDetails(userId)
+    suspend fun getActiveAgreementForShop(userId: Long,shopId: Long) =
+        leaseAgreementDao.getActiveAgreementForShop(shopId,userId)
 
     // ✅ NEW
-    suspend fun getActiveAgreementForShopAndTenant(shopId: Long, tenantId: Long) =
-        leaseAgreementDao.getActiveAgreementForShopAndTenant(shopId, tenantId)
+    suspend fun getActiveAgreementForShopAndTenant(userId: Long,shopId: Long, tenantId: Long) =
+        leaseAgreementDao.getActiveAgreementForShopAndTenant(shopId, tenantId, userId)
     suspend fun updateAgreementStatus(agreementId: Long, status: AgreementStatus) =
         leaseAgreementDao.updateAgreementStatus(agreementId, status)
 
     // Rent Payment Operations
     suspend fun insertRentPayment(payment: RentPayment) = rentPaymentDao.insert(payment)
-    suspend fun getPaymentWithAgreement(paymentId: Long) =
-        rentPaymentDao.getPaymentWithAgreement(paymentId)
-    fun getPaymentsWithDetailsForAgreement(agreementId: Long) =
-        rentPaymentDao.getPaymentsWithDetailsForAgreement(agreementId)
-    suspend fun getMonthlyRevenue(year: Int, month: Int) =
-        rentPaymentDao.getMonthlyRevenue(year, month)
-    suspend fun getRemainingRentForPeriod(agreementId: Long, month: Int, year: Int): Double {
-        val agreement = leaseAgreementDao.getAgreementWithDetails(agreementId).agreement
+    suspend fun getPaymentWithAgreement(userId: Long,paymentId: Long) =
+        rentPaymentDao.getPaymentWithAgreement(paymentId,userId)
+    fun getPaymentsWithDetailsForAgreement(userId: Long,agreementId: Long) =
+        rentPaymentDao.getPaymentsWithDetailsForAgreement(agreementId,userId)
+    suspend fun getMonthlyRevenue(userId: Long,year: Int, month: Int) =
+        rentPaymentDao.getMonthlyRevenue(year, month,userId)
+    suspend fun getRemainingRentForPeriod(userId: Long,agreementId: Long, month: Int, year: Int): Double {
+        val agreement = leaseAgreementDao.getAgreementWithDetails(userId,agreementId).agreement
             ?: throw IllegalArgumentException("Agreement not found")
 
         val monthlyRent = agreement.monthlyRent
-        val alreadyPaid = rentPaymentDao.getTotalPaidForPeriod(agreementId, month, year) ?: 0.0
+        val alreadyPaid = rentPaymentDao.getTotalPaidForPeriod(agreementId, month, year, userId) ?: 0.0
 
         return (monthlyRent - alreadyPaid).coerceAtLeast(0.0)
 
@@ -121,16 +121,17 @@ class AppRepository @Inject constructor(
 
 
     // Business Logic Methods
-    suspend fun getDashboardStats(): DashboardStats {
-        val vacantShops = shopDao.getVacantShopCount()
-        val occupiedShops = shopDao.getOccupiedShopCount()
-        val activeTenants = tenantDao.getActiveTenantCount()
+    suspend fun getDashboardStats(userId: Long): DashboardStats {
+        val vacantShops = shopDao.getVacantShopCount(userId)
+        val occupiedShops = shopDao.getOccupiedShopCount(userId)
+        val activeTenants = tenantDao.getActiveTenantCount(userId)
 
         val currentDate = Date()
         val thirtyDaysAgo = Date(currentDate.time - 30L * 24 * 60 * 60 * 1000)
         val monthlyRevenue = rentPaymentDao.getMonthlyRevenue(
             currentDate.year + 1900,
-            currentDate.month + 1
+            currentDate.month + 1,
+            userId
         )
         val monthlyExpenses = expenseDao.getTotalExpensesBetweenDates(thirtyDaysAgo, currentDate)
 
@@ -149,9 +150,9 @@ class AppRepository @Inject constructor(
         return shopDao.getShopById(shopId)
     }
 
-    suspend fun getRentDueReminders(): List<RentDueReminder> {
+    suspend fun getRentDueReminders(userId: Long): List<RentDueReminder> {
         val currentDate = Calendar.getInstance()
-        val activeAgreements = leaseAgreementDao.getActiveAgreementsWithDetails()
+        val activeAgreements = leaseAgreementDao.getActiveAgreementsWithDetails(userId)
             .first()
 
         return activeAgreements.mapNotNull { agreement ->
@@ -167,7 +168,8 @@ class AppRepository @Inject constructor(
                 val existingPayment = rentPaymentDao.getPaymentForPeriod(
                     agreement.agreement.id,
                     currentDate.get(Calendar.MONTH) + 1,
-                    currentDate.get(Calendar.YEAR)
+                    currentDate.get(Calendar.YEAR),
+                    userId
                 )
 
                 if (existingPayment == null) {
@@ -190,8 +192,8 @@ class AppRepository @Inject constructor(
     }
 
 
-    suspend fun buildRentSummary(agreementId: Long, asOf: Date = Date()): RentSummary {
-        val agreementWithDetails = leaseAgreementDao.getAgreementWithDetails(agreementId)
+    suspend fun buildRentSummary(userId: Long, agreementId: Long, asOf: Date = Date()): RentSummary {
+        val agreementWithDetails = leaseAgreementDao.getAgreementWithDetails(userId,agreementId)
         val agreement = agreementWithDetails.agreement
         val monthlyRent = agreement.monthlyRent
 
@@ -214,7 +216,7 @@ class AppRepository @Inject constructor(
             val m = iter.get(Calendar.MONTH) + 1
             val y = iter.get(Calendar.YEAR)
 
-            val paid = rentPaymentDao.getTotalPaidForPeriod(agreementId, m, y)
+            val paid = rentPaymentDao.getTotalPaidForPeriod(agreementId, m, y, userId)
             val remaining = (monthlyRent - paid).coerceAtLeast(0.0)
             val status = when {
                 remaining == 0.0 && paid > 0.0 -> RentStatus.PAID
@@ -261,8 +263,8 @@ class AppRepository @Inject constructor(
     }
 
 
-    suspend fun updateAgreementEndDate(agreementId: Long, newEndDate: Date) {
-        val agreement = leaseAgreementDao.getAgreementById(agreementId) ?: return
+    suspend fun updateAgreementEndDate(userId: Long, agreementId: Long, newEndDate: Date) {
+        val agreement = leaseAgreementDao.getAgreementById(agreementId,userId) ?: return
         leaseAgreementDao.update(agreement.copy(endDate = newEndDate))
     }
 
@@ -283,17 +285,17 @@ class AppRepository @Inject constructor(
     }
 
     // inside AppRepository
-    suspend fun getAgreementById(agreementId: Long) =
-        leaseAgreementDao.getAgreementById(agreementId)
+    suspend fun getAgreementById(userId: Long, agreementId: Long) =
+        leaseAgreementDao.getAgreementById(agreementId, userId)
 
     // Tenant Operations (existing)
-    fun getTenantById(tenantId: Long): Flow<Tenant?> =
-        tenantDao.getTenantById(tenantId)
+    fun getTenantById(userId: Long,tenantId: Long): Flow<Tenant?> =
+        tenantDao.getTenantById(userId,tenantId)
 
-    suspend fun getActiveTenantName(shopId: Long): String? {
-        val agreement = leaseAgreementDao.getActiveAgreementForShop(shopId)
+    suspend fun getActiveTenantName(userId: Long, shopId: Long): String? {
+        val agreement = leaseAgreementDao.getActiveAgreementForShop(shopId, userId)
         return agreement?.tenantId?.let { tenantId ->
-            tenantDao.getTenantById(tenantId).firstOrNull()?.fullName
+            tenantDao.getTenantById(userId,tenantId).firstOrNull()?.fullName
         }
     }
 
@@ -302,15 +304,15 @@ class AppRepository @Inject constructor(
 
 
     // Insert activity
-    suspend fun addActivity(message: String) {
-        activityLogDao.insert(ActivityLog(message = message))
+    suspend fun addActivity(userId: Long, message: String) {
+        activityLogDao.insert(ActivityLog(message = message, userId = userId))
     }
 
     // Fetch recent activities
-    fun getRecentActivities(): Flow<List<ActivityLog>> = activityLogDao.getRecentActivities()
+    fun getRecentActivities(userId: Long): Flow<List<ActivityLog>> = activityLogDao.getRecentActivities(userId)
 
-    fun getActivitiesBetween(startDate: Long, endDate: Long): Flow<List<ActivityLog>> {
-        return activityLogDao.getActivitiesBetween(startDate, endDate)
+    fun getActivitiesBetween(userId: Long,startDate: Long, endDate: Long): Flow<List<ActivityLog>> {
+        return activityLogDao.getActivitiesBetween(userId,startDate, endDate)
     }
 
     suspend fun updateTenant(tenant: Tenant) = tenantDao.update(tenant)

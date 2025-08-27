@@ -6,10 +6,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
+import com.mindblowers.leasehub.R
 import com.mindblowers.leasehub.ui.sc.main.dashboard.home.HomeScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.reports.ReportsScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.settings.SettingsScreen
@@ -21,16 +26,26 @@ import com.mindblowers.leasehub.ui.sc.main.dashboard.tenant.TenantsScreen
 @Composable
 fun DashboardScreen(
     navController: NavHostController,
-    dashboardViewModel : DashboardViewModel = hiltViewModel(),
-    list: List<String> = listOf("Lease Hub", "Shops", "Tenants", "Reports", "Settings")
+    dashboardViewModel: DashboardViewModel = hiltViewModel(),
+    list: List<String> = listOf("Lease Hub", "Shops", "Tenants", "Reports", "Settings"),
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showAddShopSheet by remember { mutableStateOf(false) }
 
+    val currentUser by dashboardViewModel.currentUser.collectAsState()
+
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(list[selectedTab]) },
+            TopAppBar(
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text("Hi ${currentUser?.fullName}", maxLines = 1, modifier = Modifier.width(100.dp), overflow = TextOverflow.Ellipsis)
+                        Text(list[selectedTab])
+                    }
+                },
                 modifier = Modifier.background(MaterialTheme.colorScheme.primaryContainer)
             )
         },
@@ -55,20 +70,30 @@ fun DashboardScreen(
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.Create, contentDescription = "Shops") },
+                    icon = { Icon(
+                        painter = painterResource(R.drawable.shop_ic),
+                        contentDescription = "Shops",
+                        modifier = Modifier.size(24.dp)
+                    ) },
                     label = { Text("Shops") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.Create, contentDescription = "Tenants") },
-                    label = { Text("Tenants") }
+                    icon = { Icon(
+                        painter = painterResource(R.drawable.tenant_ic),
+                        contentDescription = "Shops",
+                        modifier = Modifier.size(24.dp)
+                    ) },                    label = { Text("Tenants") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
-                    icon = { Icon(Icons.Default.Create, contentDescription = "Reports") },
-                    label = { Text("Reports") }
+                    icon = { Icon(
+                        painter = painterResource(R.drawable.report_ic),
+                        contentDescription = "Shops",
+                        modifier = Modifier.size(24.dp)
+                    ) },                    label = { Text("Reports") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 4,
@@ -90,7 +115,7 @@ fun DashboardScreen(
                 2 -> TenantsScreen(navController)
                 3 -> ReportsScreen(navController)
                 4 -> SettingsScreen {
-                    navController.navigate("signup") {
+                    navController.navigate("signin") {
                         popUpTo("dashboard") { inclusive = true }
                     }
                 }
@@ -100,11 +125,11 @@ fun DashboardScreen(
             EditShopBottomSheet(
                 onDismiss = {
                     showAddShopSheet = false
-                 //   viewModel.loadShops() // reload after adding
+                    //   viewModel.loadShops() // reload after adding
                 },
                 viewModel = dashboardViewModel,
 
-            )
+                )
         }
     }
 }

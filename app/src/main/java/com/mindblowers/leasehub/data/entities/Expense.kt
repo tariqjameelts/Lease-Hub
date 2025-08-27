@@ -16,17 +16,25 @@ import java.util.Date
             parentColumns = ["id"],
             childColumns = ["shopId"],
             onDelete = ForeignKey.CASCADE
-        )
+        ),
+        ForeignKey(
+            entity = User::class,
+            parentColumns = ["id"],
+            childColumns = ["userId"],
+            onDelete = ForeignKey.CASCADE
+        ),
     ],
     indices = [
         Index(value = ["shopId"]),
         Index(value = ["expenseDate"]),
-        Index(value = ["category"])
+        Index(value = ["category"]),
+        Index("userId")
     ]
 )
 data class Expense(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    val userId: Long ,
     val shopId: Long? = null, // null if general expense
     val category: ExpenseCategory,
     val amount: Double,

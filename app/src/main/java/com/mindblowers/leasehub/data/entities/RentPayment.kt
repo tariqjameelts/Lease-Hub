@@ -16,9 +16,16 @@ import com.mindblowers.leasehub.data.converters.DateConverter
             parentColumns = ["id"],
             childColumns = ["agreementId"],
             onDelete = ForeignKey.CASCADE
-        )
+        ),
+        ForeignKey(
+            entity = User::class,
+            parentColumns = ["id"],
+            childColumns = ["userId"],
+            onDelete = ForeignKey.CASCADE
+        ),
     ],
     indices = [
+        Index(value = ["userId"]),
         Index(value = ["agreementId"]),
         Index(value = ["paymentDate"]),
         Index(value = ["month", "year"])
@@ -27,6 +34,7 @@ import com.mindblowers.leasehub.data.converters.DateConverter
 data class RentPayment(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    val userId: Long,
     val agreementId: Long,
     val amount: Double,
     @TypeConverters(DateConverter::class)

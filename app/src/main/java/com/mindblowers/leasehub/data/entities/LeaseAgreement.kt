@@ -22,9 +22,17 @@ import com.mindblowers.leasehub.data.converters.DateConverter
             parentColumns = ["id"],
             childColumns = ["tenantId"],
             onDelete = ForeignKey.CASCADE
-        )
+        ),
+        ForeignKey(
+            entity = User::class,
+            parentColumns = ["id"],
+            childColumns = ["userId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+
     ],
     indices = [
+        Index(value = ["userId"]),
         Index(value = ["shopId"]),
         Index(value = ["tenantId"]),
         Index(value = ["agreementNumber"], unique = true)
@@ -33,6 +41,7 @@ import com.mindblowers.leasehub.data.converters.DateConverter
 data class LeaseAgreement(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    val userId: Long ,
     val agreementNumber: String, // Unique identifier
     val shopId: Long,
     val tenantId: Long,

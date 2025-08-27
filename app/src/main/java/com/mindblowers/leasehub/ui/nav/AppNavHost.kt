@@ -8,6 +8,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.mindblowers.leasehub.ui.sc.auth.signin.LoginScreen
 import com.mindblowers.leasehub.ui.sc.onboard.OnboardingScreen
 import com.mindblowers.leasehub.ui.sc.auth.signup.AuthViewModel
 import com.mindblowers.leasehub.ui.sc.auth.signup.SignUpScreen
@@ -35,46 +36,8 @@ fun AppNavHost(
     // ✅ Track start destination dynamically
    // var startDest by remember { mutableStateOf<String?>(null) }
 
-    val startDest = if (authViewModel.appPrefs.isNewUser()) "onboarding" else if (authViewModel.appPrefs.isLoggedIn()) "dashboard" else "signup"
+    val startDest = if (authViewModel.appPrefs.isNewUser()) "onboarding" else if (authViewModel.appPrefs.isLoggedIn()) "dashboard" else "signin"
 
-    /*LaunchedEffect(Unit) {
-        scope.launch {
-            val prefs = authViewModel.appPrefs
-
-            when {
-                prefs.isNewUser() -> {
-                    // ✅ First launch → onboarding
-                    startDest = "onboarding"
-                }
-                prefs.isLoggedIn() -> {
-                    val userId = prefs.getUserId()
-                    if (userId != null) {
-                        val activeUser = authViewModel.getUserById(userId)
-                        if (activeUser?.isActive == true) {
-                            // ✅ Sync repository with session
-                            authViewModel.setCurrentUser(userId)
-                            startDest = "dashboard"
-                        } else {
-                            prefs.clearSession()
-                            authViewModel.clearCurrentUser()
-                            startDest = "signup"
-                        }
-                    } else {
-                        prefs.clearSession()
-                        authViewModel.clearCurrentUser()
-                        startDest = "signup"
-                    }
-                }
-                else -> {
-                    // ✅ Not logged in & not new → login/signup
-                    authViewModel.clearCurrentUser()
-                    startDest = "signup"
-                }
-            }
-
-            Log.d("AppNavHost", "startDest: $startDest")
-        }
-    }*/
 
     // Render NavHost only when we  asdknow the start destination
     NavHost(
@@ -88,7 +51,8 @@ fun AppNavHost(
 
         // Sign Up / Login
         composable("signup") {
-            SignUpScreen {
+
+            SignUpScreen (navController){
                 navController.navigate("dashboard") {
                     popUpTo("signup") { inclusive = true }
                 }
@@ -114,6 +78,9 @@ fun AppNavHost(
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack() }
             }
+        }
+        composable("signin"){
+            LoginScreen(navController)
         }
 
         composable("add_tenant/{shopId}") { AddTenantScreen(navController) }

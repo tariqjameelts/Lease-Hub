@@ -10,6 +10,8 @@ import com.mindblowers.leasehub.data.entities.RentPayment
 import com.mindblowers.leasehub.data.entities.Shop
 import com.mindblowers.leasehub.data.entities.ShopStatus
 import com.mindblowers.leasehub.data.entities.Tenant
+import com.mindblowers.leasehub.data.entities.User
+import com.mindblowers.leasehub.data.prefs.AppPrefs
 import com.mindblowers.leasehub.data.repository.AppRepository
 import com.mindblowers.leasehub.data.repository.DashboardStats
 import com.mindblowers.leasehub.data.repository.RentDueReminder
@@ -30,8 +32,15 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
-    private val repository: AppRepository
+    private val repository: AppRepository,
+    private val appPrefs: AppPrefs
 ) : ViewModel() {
+
+
+    val userId = appPrefs.getUserId()
+
+    private val _currentUser = MutableStateFlow<User?>(null)
+    val currentUser: StateFlow<User?> = _currentUser
 
 
     private val _expenses = MutableStateFlow<List<Expense>>(emptyList())
@@ -103,13 +112,22 @@ class DashboardViewModel @Inject constructor(
         loadShops()
         loadRecentActivity() // load activity from repository
         getActivitiesBetween()
+        loadActiveUser()
+    }
+
+    private fun loadActiveUser() {
+        viewModelScope.launch {
+            val userId = appPrefs.getUserId()
+            val user = if (userId != null) repository.getUserById(userId) else null
+            _currentUser.value = user
+        }
     }
 
     // ---- Dashboard data ----
     fun loadDashboardData() = viewModelScope.launch {
         try {
-            _dashboardStats.value = repository.getDashboardStats()
-            _rentDueReminders.value = repository.getRentDueReminders()
+            _dashboardStats.value = repository.getDashboardStats(userId!!)
+            _rentDueReminders.value = repository.getRentDueReminders(userId)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -134,7 +152,7 @@ class DashboardViewModel @Inject constructor(
 
     // ---- Shops ----
     fun loadShops() = viewModelScope.launch {
-        repository.getAllShops().collect { _shops.value = it }
+        repository.getAllShops(userId!!).collect { _shops.value = it }
     }
 
     fun getShopById(shopId: Long) = viewModelScope.launch {
@@ -186,7 +204,8 @@ class DashboardViewModel @Inject constructor(
             monthlyRent = shop.value?.monthlyRent ?: 0.0,
             securityDeposit = shop.value?.securityDeposit ?: 0.0,
             rentDueDay = rentDueDay,
-            createdAt = today
+            createdAt = today,
+            userId = userId!!
         )
         repository.insertLeaseAgreement(agreement)
         repository.updateShopStatus(shopId, ShopStatus.OCCUPIED)
@@ -195,18 +214,18 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun refreshActiveAgreement(shopId: Long) = viewModelScope.launch {
-        _activeAgreement.value = repository.getActiveAgreementForShop(shopId)
+        _activeAgreement.value = repository.getActiveAgreementForShop(userId!!,shopId)
         refreshActiveTenantName(shopId)
     }
 
     fun getActiveAgreementForShop(shopId: Long) = refreshActiveAgreement(shopId)
 
     fun getActiveAgreementForShopAndTenant(shopId: Long, tenantId: Long) = viewModelScope.launch {
-        _activeAgreement.value = repository.getActiveAgreementForShopAndTenant(shopId, tenantId)
+        _activeAgreement.value = repository.getActiveAgreementForShopAndTenant(userId!!, shopId, tenantId)
     }
 
     fun refreshActiveTenantName(shopId: Long) = viewModelScope.launch {
-        _activeTenantName.value = repository.getActiveTenantName(shopId)
+        _activeTenantName.value = repository.getActiveTenantName(userId!!, shopId)
     }
 
 
@@ -217,7 +236,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun addRentPayment(payment: RentPayment, onError: (String) -> Unit, onSuccess: () -> Unit) = viewModelScope.launch {
-        val remaining = repository.getRemainingRentForPeriod(payment.agreementId, payment.month, payment.year)
+        val remaining = repository.getRemainingRentForPeriod(userId!!, payment.agreementId, payment.month, payment.year)
         when {
             payment.amount <= 0 -> onError("Invalid payment amount")
             payment.amount > remaining -> onError("Cannot pay more than remaining ($remaining)")
@@ -230,11 +249,11 @@ class DashboardViewModel @Inject constructor(
     }
 
     suspend fun getRemainingRent(agreementId: Long, month: Int, year: Int): Double {
-        return repository.getRemainingRentForPeriod(agreementId, month, year)
+        return repository.getRemainingRentForPeriod(userId!!, agreementId, month, year)
     }
 
     fun loadRentSummary(agreementId: Long) = viewModelScope.launch {
-        _rentSummary.value = repository.buildRentSummary(agreementId, Date())
+        _rentSummary.value = repository.buildRentSummary(userId!!, agreementId, Date())
     }
 
     // ---- Lease Agreement ----
@@ -243,20 +262,20 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun renewAgreement(agreementId: Long, newEndDate: Date) = viewModelScope.launch {
-        repository.updateAgreementEndDate(agreementId, newEndDate)
-        val shopId = repository.getAgreementById(agreementId)?.shopId ?: return@launch
+        repository.updateAgreementEndDate(userId!!, agreementId, newEndDate)
+        val shopId = repository.getAgreementById(userId, agreementId)?.shopId ?: return@launch
         refreshActiveAgreement(shopId)
         addActivity("Agreement #$agreementId renewed until $newEndDate")
     }
 
     fun removeAgreement(agreementId: Long) = viewModelScope.launch {
-        val agreement = repository.getAgreementById(agreementId) ?: return@launch
+        val agreement = repository.getAgreementById(userId!!, agreementId) ?: return@launch
 
         val tenantId = agreement.tenantId
         repository.deleteAgreement(agreement)
         repository.updateShopStatus(agreement.shopId, ShopStatus.VACANT)
 
-        val tenant = repository.getTenantById(tenantId).firstOrNull()
+        val tenant = repository.getTenantById(userId,tenantId).firstOrNull()
         if (tenant != null) {
             repository.deleteTenant(tenant)
             addActivity("Tenant '${tenant.fullName}' deleted after removing agreement #$agreementId")
@@ -268,12 +287,12 @@ class DashboardViewModel @Inject constructor(
 
     // ---- Activity log ----
     private fun addActivity(message: String) = viewModelScope.launch {
-        repository.addActivity(message)
+        repository.addActivity(userId!!, message)
         loadRecentActivity()
     }
 
     private fun loadRecentActivity() = viewModelScope.launch {
-        repository.getRecentActivities().collect { activities ->
+        repository.getRecentActivities(userId!!).collect { activities ->
             _recentActivity.value = activities
         }
     }
@@ -285,6 +304,7 @@ class DashboardViewModel @Inject constructor(
 
     private fun getActivitiesBetween() = viewModelScope.launch {
         repository.getActivitiesBetween(
+            userId = userId!!,
             startDate = _dateRange.value.startDate,
             endDate = _dateRange.value.endDate
         ).collect { activities ->
@@ -293,28 +313,28 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun loadTenants() = viewModelScope.launch {
-        repository.getAllTenants().collect { _tenants.value = it }
+        repository.getAllTenants(userId!!).collect { _tenants.value = it }
     }
 
     fun addOrUpdateTenant(tenant: Tenant, isUpdate: Boolean = false) = viewModelScope.launch {
         if (isUpdate) {
             repository.updateTenant(tenant)
-            repository.addActivity("Tenant '${tenant.fullName}' updated")
+            repository.addActivity(userId!!,"Tenant '${tenant.fullName}' updated")
         } else {
             repository.insertTenant(tenant)
-            repository.addActivity("Tenant '${tenant.fullName}' added")
+            repository.addActivity(userId!!,"Tenant '${tenant.fullName}' added")
         }
         loadTenants()
     }
 
     fun deleteTenant(tenant: Tenant, onDeleted: () -> Unit) = viewModelScope.launch {
         repository.deleteTenant(tenant)
-        repository.addActivity("Tenant '${tenant.fullName}' deleted")
+        repository.addActivity(userId!!,"Tenant '${tenant.fullName}' deleted")
         loadTenants()
         onDeleted()
     }
 
-    fun getTenantById(id: Long): Flow<Tenant?> = repository.getTenantById(id)
+    fun getTenantById(id: Long): Flow<Tenant?> = repository.getTenantById(userId!!,id)
 }
 
 // ---- DateRange + helpers ----

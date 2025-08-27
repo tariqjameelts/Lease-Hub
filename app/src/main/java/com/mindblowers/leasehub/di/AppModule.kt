@@ -47,8 +47,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideAuthRepository(userDao: UserDao):AuthRepository{
-        return AuthRepository(userDao)
+    fun provideAuthRepository(userDao: UserDao, appPrefs: AppPrefs):AuthRepository{
+        return AuthRepository(userDao, appPrefs = appPrefs)
     }
     @Provides
     fun provideLeaseAgreementDao(database: AppDatabase): LeaseAgreementDao = database.leaseAgreementDao()

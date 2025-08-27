@@ -12,10 +12,12 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavController
 import com.mindblowers.leasehub.data.entities.User
 
 @Composable
 fun SignUpScreen(
+    navController: NavController,
     viewModel: AuthViewModel = hiltViewModel(),
     onSignUpSuccess: () -> Unit
 ) {
@@ -120,6 +122,9 @@ fun SignUpScreen(
                 } else {
                     Text("Sign Up")
                 }
+            }
+            TextButton(onClick = { navController.navigate("signin") }) {
+                Text("Don't have an account? Sign Up")
             }
         }
     }

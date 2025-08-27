@@ -336,7 +336,6 @@ fun ShopDetailScreen(
 
     if (showEditShopSheet && shop != null) {
         EditShopBottomSheet(
-            shop = shop!!,
             onDismiss = { showEditShopSheet = false }
         )
     }

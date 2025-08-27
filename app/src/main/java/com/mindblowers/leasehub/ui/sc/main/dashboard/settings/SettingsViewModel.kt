@@ -25,6 +25,7 @@ class SettingsViewModel @Inject constructor(
     private val appPrefs: AppPrefs
 ) : ViewModel() {
 
+    val userId = appPrefs.getUserId()
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
@@ -87,7 +88,7 @@ class SettingsViewModel @Inject constructor(
 
     private fun loadDashboardStats() {
         viewModelScope.launch {
-            val stats = repository.getDashboardStats()
+            val stats = repository.getDashboardStats(userId!!)
             _uiState.value = _uiState.value.copy(dashboardStats = stats)
         }
     }

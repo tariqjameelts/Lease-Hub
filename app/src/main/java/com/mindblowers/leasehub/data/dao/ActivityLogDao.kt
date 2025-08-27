@@ -11,10 +11,24 @@ interface ActivityLogDao {
     @Insert
     suspend fun insert(log: ActivityLog)
 
-    @Query("SELECT * FROM activity_log ORDER BY timestamp DESC LIMIT 50")
-    fun getRecentActivities(): Flow<List<ActivityLog>>
+    @Query("""
+    SELECT * FROM activity_log
+    WHERE userId = :userId
+    ORDER BY timestamp DESC
+    LIMIT 50
+""")
+    fun getRecentActivities(userId: Long): Flow<List<ActivityLog>>
 
-    @Query("SELECT * FROM activity_log WHERE timestamp BETWEEN :startDate AND :endDate ORDER BY timestamp DESC")
-    fun getActivitiesBetween(startDate: Long, endDate: Long): Flow<List<ActivityLog>>
+    @Query("""
+    SELECT * FROM activity_log 
+    WHERE userId = :userId 
+      AND timestamp BETWEEN :startDate AND :endDate 
+    ORDER BY timestamp DESC
+""")
+    fun getActivitiesBetween(
+        userId: Long,
+        startDate: Long,
+        endDate: Long
+    ): Flow<List<ActivityLog>>
 
 }

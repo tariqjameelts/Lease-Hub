@@ -30,7 +30,7 @@ fun PaymentBottomSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-
+    val userId by remember { mutableStateOf(dashboardViewModel.userId) }
     val paymentDate by remember { mutableStateOf(Date()) }
     val cal = remember(paymentDate) { Calendar.getInstance().apply { time = paymentDate } }
     val payMonth = cal.get(Calendar.MONTH) + 1
@@ -200,7 +200,8 @@ fun PaymentBottomSheet(
                             notes = notes.ifBlank { null },
                             isLate = isLate,
                             lateFee = 0.0,
-                            status = status
+                            status = status,
+                            userId = userId!!
                         )
 
                         dashboardViewModel.addRentPayment(

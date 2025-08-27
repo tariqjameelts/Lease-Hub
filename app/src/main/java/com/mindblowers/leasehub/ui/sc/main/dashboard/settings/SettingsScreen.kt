@@ -272,10 +272,10 @@ fun SettingsScreen(
         // --- Account & Security ---
         item {
             SettingsCard(title = "Account & Security", icon = Icons.Default.Info) {
-                SettingActionRow(
+                /*SettingActionRow(
                     title = "Change Password",
                     onClick = { viewModel.changePassword() }
-                )
+                )*/
                 SettingActionRow(
                     title = "Logout",
                     onClick = { showLogoutDialog = true },

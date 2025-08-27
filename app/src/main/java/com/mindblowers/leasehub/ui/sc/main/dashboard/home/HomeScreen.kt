@@ -17,9 +17,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.mindblowers.leasehub.R
 import com.mindblowers.leasehub.data.entities.ActivityLog
 import com.mindblowers.leasehub.data.entities.Shop
 import com.mindblowers.leasehub.data.entities.ShopStatus
@@ -64,10 +67,18 @@ fun HomeScreen(viewModel: DashboardViewModel) {
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        SummaryCard("Total Shops", stats?.totalShops?.toString() ?: "-", Icons.Default.Close) {
+                        SummaryCard(
+                            "Total Shops",
+                            stats?.totalShops?.toString() ?: "-",
+                            painterResource(R.drawable.shop_ic)
+                        ) {
                             dialogState = DialogType.TotalShops(shops)
                         }
-                        SummaryCard("Vacant Shops", stats?.vacantShops?.toString() ?: "-", Icons.Default.Close) {
+                        SummaryCard(
+                            "Vacant Shops",
+                            stats?.vacantShops?.toString() ?: "-",
+                            painterResource(R.drawable.lease_shop)
+                        ) {
                             dialogState = DialogType.VacantShops(shops.filter { it.status == ShopStatus.VACANT })
                         }
                     }
@@ -76,10 +87,18 @@ fun HomeScreen(viewModel: DashboardViewModel) {
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        SummaryCard("Active Tenants", stats?.activeTenants?.toString() ?: "-", Icons.Default.Close) {
+                        SummaryCard(
+                            "Active Tenants",
+                            stats?.activeTenants?.toString() ?: "-",
+                            painterResource(R.drawable.tenant_ic)
+                        ) {
                             dialogState = DialogType.ActiveTenants(stats?.activeTenants ?: 0)
                         }
-                        SummaryCard("Net Profit", stats?.netProfit?.toString() ?: "-", Icons.Default.Close) {
+                        SummaryCard(
+                            "Net Profit",
+                            stats?.netProfit?.toString() ?: "-",
+                            painterResource(R.drawable.net_profit)
+                        ) {
                             dialogState = DialogType.NetProfit(stats?.netProfit ?: 0.0)
                         }
                     }
@@ -137,7 +156,7 @@ fun HomeScreen(viewModel: DashboardViewModel) {
 fun SummaryCard(
     title: String,
     value: String,
-    icon: ImageVector,
+    icon: Painter,
     onClick: () -> Unit
 ) {
     Card(
@@ -149,10 +168,16 @@ fun SummaryCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+
         ) {
-            Icon(icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary)
+            Icon(
+                icon,
+                contentDescription = title,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
             Spacer(Modifier.height(8.dp))
             Text(value, style = MaterialTheme.typography.headlineSmall)
             Text(title, style = MaterialTheme.typography.bodySmall)

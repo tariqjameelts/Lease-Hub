@@ -19,15 +19,19 @@ interface TenantDao {
     @Delete
     suspend fun delete(tenant: Tenant)
 
-    @Query("SELECT * FROM tenants WHERE id = :id")
-    fun getTenantById(id: Long): Flow<Tenant?>
+    // ✅ tenant by id + user
+    @Query("SELECT * FROM tenants WHERE id = :id AND userId = :userId")
+    fun getTenantById(userId: Long, id: Long): Flow<Tenant?>
 
-    @Query("SELECT * FROM tenants WHERE isActive = 1 ORDER BY fullName")
-    fun getAllTenants(): Flow<List<Tenant>>
+    // ✅ all tenants of this user
+    @Query("SELECT * FROM tenants WHERE isActive = 1 AND userId = :userId ORDER BY fullName")
+    fun getAllTenants(userId: Long): Flow<List<Tenant>>
 
-    @Query("UPDATE tenants SET isActive = 0 WHERE id = :tenantId")
-    suspend fun deactivateTenant(tenantId: Long)
+    // ✅ deactivate tenant, restricted by userId
+    @Query("UPDATE tenants SET isActive = 0 WHERE id = :tenantId AND userId = :userId")
+    suspend fun deactivateTenant(userId: Long, tenantId: Long)
 
-    @Query("SELECT COUNT(*) FROM tenants WHERE isActive = 1")
-    suspend fun getActiveTenantCount(): Int
+    // ✅ active tenant count for this user
+    @Query("SELECT COUNT(*) FROM tenants WHERE isActive = 1 AND userId = :userId")
+    suspend fun getActiveTenantCount(userId: Long): Int
 }

@@ -12,7 +12,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.mindblowers.leasehub.data.entities.Tenant
+import com.mindblowers.leasehub.ui.sc.main.dashboard.DashboardViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -21,8 +23,10 @@ import java.util.*
 fun AddTenantBottomSheet(
     tenant: Tenant? = null,
     onDismiss: () -> Unit,
-    onSave: (Tenant, Date?, Date?) -> Unit
+    onSave: (Tenant, Date?, Date?) -> Unit,
+    viewModel: DashboardViewModel = hiltViewModel()
 ) {
+    val userId by remember { mutableStateOf(viewModel.userId) }
     var fullName by remember { mutableStateOf(tenant?.fullName ?: "") }
     var phoneNumber by remember { mutableStateOf(tenant?.phoneNumber ?: "") }
     var address by remember { mutableStateOf(tenant?.address ?: "") }
@@ -157,7 +161,8 @@ fun AddTenantBottomSheet(
                         address = address,
                         companyName = companyName.ifBlank { null },
                         email = email.ifBlank { null },
-                        emergencyPhone = emergencyPhone.ifBlank { null }
+                        emergencyPhone = emergencyPhone.ifBlank { null },
+                        userId = userId!!
                     )
 
                     if (tenant == null) {
