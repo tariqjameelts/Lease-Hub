@@ -21,8 +21,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
+import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
 class AppRepository @Inject constructor(
@@ -150,47 +152,141 @@ class AppRepository @Inject constructor(
         return shopDao.getShopById(shopId)
     }
 
+    // In AppRepository.kt
+    // In AppRepository.kt
     suspend fun getRentDueReminders(userId: Long): List<RentDueReminder> {
         val currentDate = Calendar.getInstance()
+        val today = currentDate.time
         val activeAgreements = leaseAgreementDao.getActiveAgreementsWithDetails(userId)
             .first()
 
         return activeAgreements.mapNotNull { agreement ->
-            val dueDate = Calendar.getInstance().apply {
-                set(Calendar.DAY_OF_MONTH, agreement.agreement.rentDueDay)
+            val agreementStart = agreement.agreement.startDate
+            val agreementEnd = agreement.agreement.endDate
+
+            // Don't show reminders for agreements that haven't started yet
+            if (today.before(agreementStart)) {
+                return@mapNotNull null
+            }
+
+            // Calculate the current period (always 1st of the month)
+            val periodCalendar = Calendar.getInstance().apply {
+                time = today
+                set(Calendar.DAY_OF_MONTH, 1) // Always due on 1st of month
                 set(Calendar.HOUR_OF_DAY, 23)
                 set(Calendar.MINUTE, 59)
                 set(Calendar.SECOND, 59)
                 set(Calendar.MILLISECOND, 999)
             }
 
-            if (currentDate.after(dueDate)) {
-                val existingPayment = rentPaymentDao.getPaymentForPeriod(
-                    agreement.agreement.id,
-                    currentDate.get(Calendar.MONTH) + 1,
-                    currentDate.get(Calendar.YEAR),
-                    userId
+            // Check if we're in the first month of agreement (pro-rated)
+            val isFirstMonth = isInFirstMonth(agreementStart, today)
+            val isLastMonth = today.after(agreementEnd) // Agreement ended but not closed
+
+            // Skip if agreement has ended
+            if (isLastMonth) {
+                return@mapNotNull null
+            }
+
+            val dueDate = periodCalendar.time
+            val currentMonth = periodCalendar.get(Calendar.MONTH)
+            val currentYear = periodCalendar.get(Calendar.YEAR)
+
+            // Check if payment already exists for current period
+            val existingPayment = rentPaymentDao.getPaymentForPeriod(
+                agreement.agreement.id,
+                currentMonth + 1, // Month is 1-12
+                currentYear,
+                userId
+            )
+
+            // If payment already exists, skip this agreement
+            if (existingPayment != null) {
+                return@mapNotNull null
+            }
+
+            // Calculate pro-rated amount for first month
+            val amountDue = if (isFirstMonth) {
+                calculateProRatedRent(agreement.agreement.monthlyRent, agreementStart, periodCalendar.time)
+            } else {
+                agreement.agreement.monthlyRent
+            }
+
+            // Calculate period description
+            val periodDescription = if (isFirstMonth) {
+                val endOfMonth = getLastDayOfMonth(agreementStart)
+                "${SimpleDateFormat("MMM", Locale.getDefault()).format(agreementStart)} ${getDayOfMonth(agreementStart)}-${getDayOfMonth(endOfMonth)}, ${getYear(agreementStart)}"
+            } else {
+                "${SimpleDateFormat("MMMM", Locale.getDefault()).format(dueDate)} ${getYear(dueDate)}"
+            }
+
+            // Check if due date has passed
+            if (currentDate.after(periodCalendar)) {
+                val daysOverdue = ((currentDate.timeInMillis - periodCalendar.timeInMillis) / (24 * 60 * 60 * 1000)).toInt()
+
+                RentDueReminder(
+                    agreement = agreement.agreement,
+                    shop = agreement.shop,
+                    tenant = agreement.tenant,
+                    dueDate = dueDate,
+                    daysOverdue = daysOverdue,
+                    amountDue = amountDue,
+                    period = periodDescription
                 )
-
-                if (existingPayment == null) {
-                    val daysOverdue = (currentDate.timeInMillis - dueDate.timeInMillis) / (24 * 60 * 60 * 1000)
-
+            } else {
+                // For upcoming due dates (within next 7 days)
+                val daysUntilDue = ((periodCalendar.timeInMillis - currentDate.timeInMillis) / (24 * 60 * 60 * 1000)).toInt()
+                if (daysUntilDue <= 7) {
                     RentDueReminder(
                         agreement = agreement.agreement,
                         shop = agreement.shop,
                         tenant = agreement.tenant,
-                        dueDate = dueDate.time,
-                        daysOverdue = daysOverdue
+                        dueDate = dueDate,
+                        daysOverdue = -daysUntilDue, // Negative indicates upcoming
+                        amountDue = amountDue,
+                        period = periodDescription
                     )
                 } else {
                     null
                 }
-            } else {
-                null
             }
-        }
+        }.sortedBy { it.daysOverdue } // Sort by most overdue first
     }
 
+    // Helper functions for pro-rated calculation
+    private fun isInFirstMonth(startDate: Date, currentDate: Date): Boolean {
+        val startCal = Calendar.getInstance().apply { time = startDate }
+        val currentCal = Calendar.getInstance().apply { time = currentDate }
+
+        return startCal.get(Calendar.YEAR) == currentCal.get(Calendar.YEAR) &&
+                startCal.get(Calendar.MONTH) == currentCal.get(Calendar.MONTH)
+    }
+
+    private fun calculateProRatedRent(monthlyRent: Double, startDate: Date, periodEnd: Date): Double {
+        val startCal = Calendar.getInstance().apply { time = startDate }
+        val endCal = Calendar.getInstance().apply { time = periodEnd }
+
+        val daysInMonth = endCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        val daysOccupied = daysInMonth - startCal.get(Calendar.DAY_OF_MONTH) + 1
+
+        return (monthlyRent / daysInMonth) * daysOccupied
+    }
+
+    private fun getLastDayOfMonth(date: Date): Date {
+        val cal = Calendar.getInstance().apply { time = date }
+        cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
+        return cal.time
+    }
+
+    private fun getDayOfMonth(date: Date): Int {
+        val cal = Calendar.getInstance().apply { time = date }
+        return cal.get(Calendar.DAY_OF_MONTH)
+    }
+
+    private fun getYear(date: Date): Int {
+        val cal = Calendar.getInstance().apply { time = date }
+        return cal.get(Calendar.YEAR)
+    }
 
     suspend fun buildRentSummary(userId: Long, agreementId: Long, asOf: Date = Date()): RentSummary {
         val agreementWithDetails = leaseAgreementDao.getAgreementWithDetails(userId,agreementId)
@@ -319,6 +415,35 @@ class AppRepository @Inject constructor(
 
     suspend fun deleteTenant(tenant: Tenant) = tenantDao.delete(tenant)
 
+
+    suspend fun getPaymentsBetweenDates(startDate: Date, endDate: Date, userId: Long): List<RentPayment> {
+        // Convert to proper timestamps for comparison
+        val startMillis = startDate.time
+        val endMillis = endDate.time
+
+        // Get all payments and filter by date range
+        val allPayments = rentPaymentDao.getAllPaymentsForUser(userId)
+        return allPayments.filter { payment ->
+            val paymentMillis = payment.paymentDate.time
+            paymentMillis in startMillis..endMillis
+        }
+    }
+
+    // In AppRepository.kt - Add this method
+    suspend fun getTenantByIdDirect(userId: Long, tenantId: Long): Tenant? {
+        return tenantDao.getTenantById(userId, tenantId).firstOrNull()
+    }
+
+    suspend fun getPaymentsBetweenDatesForAgreement(
+        agreementId: Long,
+        startDate: Date,
+        endDate: Date,
+        userId: Long
+    ): List<RentPayment> {
+        val allPayments = rentPaymentDao.getPaymentsBetweenDates(startDate, endDate, userId)
+        return allPayments.filter { it.agreementId == agreementId }
+    }
+
 }
 
 data class DashboardStats(
@@ -331,12 +456,15 @@ data class DashboardStats(
     val netProfit: Double
 )
 
+// In AppRepository.kt
 data class RentDueReminder(
     val agreement: LeaseAgreement,
     val shop: Shop,
     val tenant: Tenant,
     val dueDate: Date,
-    val daysOverdue: Long
+    val daysOverdue: Int, // Positive = overdue, Negative = days until due
+    val amountDue: Double,
+    val period: String // e.g., "August 2024" or "Aug 15-31, 2024"
 )
 
 enum class RentStatus { PAID, PARTIAL, UNPAID }

@@ -15,9 +15,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.compose.rememberNavController
+import com.mindblowers.leasehub.data.prefs.ThemeOption
 import com.mindblowers.leasehub.data.repository.SettingsRepo
 import com.mindblowers.leasehub.ui.nav.AppNavHost
-import com.mindblowers.leasehub.ui.sc.main.dashboard.settings.ThemeOption
 import com.mindblowers.leasehub.ui.theme.LeaseHubTheme
 import dagger.hilt.android.AndroidEntryPoint
 import jakarta.inject.Inject

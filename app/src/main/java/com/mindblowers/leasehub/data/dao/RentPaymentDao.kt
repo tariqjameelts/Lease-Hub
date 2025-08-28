@@ -31,6 +31,18 @@ interface RentPaymentDao {
         userId: Long
     ): Double
 
+
+
+    // Add this method to RentPaymentDao
+    @Query("SELECT * FROM rent_payments WHERE userId = :userId")
+    suspend fun getAllPaymentsForUser(userId: Long): List<RentPayment>
+
+    @Query("SELECT * FROM rent_payments")
+    suspend fun getAllForBackup(): List<RentPayment>
+
+    @Query("SELECT * FROM rent_payments WHERE id = :id AND userId = :userId")
+    suspend fun getPaymentByIdSync(id: Long, userId: Long): RentPayment?
+
     // ✅ Payment with agreement details (by userId too)
     @Transaction
     @Query("""
@@ -87,12 +99,13 @@ interface RentPaymentDao {
     ): Double
 
     // ✅ Payments between dates by user
+    // In RentPaymentDao.kt - Update the existing method
     @Query("""
-        SELECT * 
-        FROM rent_payments 
-        WHERE paymentDate BETWEEN :startDate AND :endDate
-          AND userId = :userId
-    """)
+    SELECT * 
+    FROM rent_payments 
+    WHERE paymentDate BETWEEN :startDate AND :endDate
+      AND userId = :userId
+""")
     suspend fun getPaymentsBetweenDates(
         startDate: Date,
         endDate: Date,

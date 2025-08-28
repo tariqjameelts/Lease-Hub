@@ -31,4 +31,11 @@ interface ActivityLogDao {
         endDate: Long
     ): Flow<List<ActivityLog>>
 
+
+    @Query("SELECT * FROM activity_log")
+    suspend fun getAllForBackup(): List<ActivityLog>
+
+    @Query("SELECT * FROM activity_log WHERE id = :id")
+    suspend fun getActivityLogByIdSync(id: Long): ActivityLog?
+
 }

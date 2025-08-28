@@ -16,6 +16,10 @@ import kotlinx.coroutines.flow.Flow
 interface ShopDao {
     @Insert
     suspend fun insert(shop: Shop): Long
+    @Query("SELECT * FROM shops")
+    suspend fun getAllForBackup(): List<Shop>
+    @Query("SELECT * FROM shops WHERE id = :id")
+    suspend fun getShopByIdSync(id: Long): Shop?
 
     @Update
     suspend fun update(shop: Shop)

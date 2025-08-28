@@ -1,7 +1,6 @@
 package com.mindblowers.leasehub.data.prefs
 
 import android.content.Context
-import com.mindblowers.leasehub.ui.sc.main.dashboard.settings.ThemeOption
 import androidx.core.content.edit
 
 class AppPrefs(context: Context) {
@@ -64,4 +63,11 @@ class AppPrefs(context: Context) {
     fun getDynamicColor(): Boolean {
         return prefs.getBoolean(KEY_DYNAMIC, true)
     }
+}
+
+
+enum class ThemeOption {
+    LIGHT,
+    DARK,
+    SYSTEM
 }

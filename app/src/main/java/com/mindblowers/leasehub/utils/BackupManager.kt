@@ -1,11 +1,12 @@
-// com.mindblowers.leasehub.utils.BackupManager
-
 package com.mindblowers.leasehub.utils
 
 import android.content.Context
 import android.net.Uri
 import androidx.annotation.WorkerThread
+import androidx.room.withTransaction
+import com.google.gson.Gson
 import com.mindblowers.leasehub.data.AppDatabase
+import com.mindblowers.leasehub.data.entities.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,11 +23,25 @@ class BackupManager @Inject constructor(
 ) {
 
     companion object {
-        private const val INTERNAL_BACKUP_DIR = "leasehub_backups"
         private const val PREFIX = "leasehub_backup_"
-        private const val EXT = ".db"
-        private const val DB_NAME = "shop_leasing_db"
+        private const val EXT = ".json"
+        private const val BACKUP_VERSION = 1
     }
+
+    // Data classes for backup format
+    data class BackupData(
+        val version: Int = BACKUP_VERSION,
+        val timestamp: Long = System.currentTimeMillis(),
+        val users: List<User> = emptyList(),
+        val shops: List<Shop> = emptyList(),
+        val tenants: List<Tenant> = emptyList(),
+        val leaseAgreements: List<LeaseAgreement> = emptyList(),
+        val rentPayments: List<RentPayment> = emptyList(),
+        val expenses: List<Expense> = emptyList(),
+        val activityLogs: List<ActivityLog> = emptyList()
+    )
+
+    private val gson = Gson()
 
     // ----- Filename helpers -----
 
@@ -34,143 +49,199 @@ class BackupManager @Inject constructor(
         SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
 
     fun suggestedBackupFileName(): String =
-        "${PREFIX}${nowStamp()}_v${AppDatabase.VERSION}$EXT"
-
-    /** Example: leasehub_backup_20250826_101010_v2.db -> 2  (null if parse fails) */
-    private fun parseSchemaFromName(name: String): Int? {
-        val idx = name.lastIndexOf("_v")
-        if (idx == -1 || !name.endsWith(EXT)) return null
-        val verPart = name.substring(idx + 2, name.length - EXT.length)
-        return verPart.toIntOrNull()
-    }
+        "${PREFIX}${nowStamp()}_v${BACKUP_VERSION}$EXT"
 
     fun isLikelyLeaseHubBackup(name: String): Boolean =
         name.startsWith(PREFIX) && name.endsWith(EXT)
 
-    // ----- Internal create/list/delete -----
+    // ----- Export functionality -----
 
-    /** Creates an internal (app-private external) backup file. */
-    suspend fun createInternalBackup(): File? = withContext(Dispatchers.IO) {
-        try {
-            val backupDir = File(context.getExternalFilesDir(null), INTERNAL_BACKUP_DIR)
-            if (!backupDir.exists()) backupDir.mkdirs()
-
-            val out = File(backupDir, suggestedBackupFileName())
-
-            database.openHelper.writableDatabase.let { db ->
-                // Optional: shrink & clean
-                db.execSQL("VACUUM")
-                val source = File(db.path)
-                source.copyTo(out, overwrite = true)
-            }
-            out
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
-    fun getInternalBackups(): List<File> {
-        val dir = File(context.getExternalFilesDir(null), INTERNAL_BACKUP_DIR)
-        if (!dir.exists() || !dir.isDirectory) return emptyList()
-        return dir.listFiles { f ->
-            f.isFile && isLikelyLeaseHubBackup(f.name)
-        }?.sortedByDescending { it.lastModified() } ?: emptyList()
-    }
-
-    fun deleteInternalBackup(file: File): Boolean = try { file.delete() } catch (_: Exception) { false }
-
-    fun getReadableFileSize(bytes: Long): String = when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        bytes < 1024L * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
-        else -> "${bytes / (1024L * 1024 * 1024)} GB"
-    }
-
-    // ----- SAF Export / Import -----
-
-    /**
-     * Copy an internal backup file to a user-selected SAF Uri (Export).
-     */
-    suspend fun exportBackupToUri(internalBackup: File, destUri: Uri): Boolean =
-        withContext(Dispatchers.IO) {
-            if (!internalBackup.exists()) return@withContext false
-            try {
-                context.contentResolver.openOutputStream(destUri, "w")?.use { out ->
-                    FileInputStream(internalBackup).use { input ->
-                        input.copyTo(out)
-                        out.flush()
-                    }
-                } ?: return@withContext false
-                true
-            } catch (e: Exception) {
-                e.printStackTrace()
-                false
-            }
-        }
-
-    /**
-     * Restore DB from a user-selected SAF Uri (Import + Overwrite).
-     * Validates filename convention and optionally schema version.
-     * Overwrites the *entire* database file.
-     */
-    suspend fun restoreFromUri(backupUri: Uri, pickedDisplayName: String? = null): Boolean =
+    /** Creates a backup with all data and exports to a user-selected SAF Uri */
+    suspend fun exportBackupToUri(destUri: Uri, onProgress: (String) -> Unit = {}): Boolean =
         withContext(Dispatchers.IO) {
             try {
-                // Best-effort filename validation (some pickers won’t give us display name).
-                pickedDisplayName?.let { name ->
-                    if (!isLikelyLeaseHubBackup(name)) return@withContext false
-                    val schema = parseSchemaFromName(name)
-                    // Hard fail if schema mismatch. You can soften this if you support migrations.
-                    if (schema != null && schema != AppDatabase.VERSION) {
-                        return@withContext false
-                    }
-                }
+                onProgress("Collecting data...")
 
-                val dbFile = context.getDatabasePath(DB_NAME)
+                // Collect all data for backup
+                val backupData = BackupData(
+                    users = database.userDao().getAllForBackup(),
+                    shops = database.shopDao().getAllForBackup(),
+                    tenants = database.tenantDao().getAllForBackup(),
+                    leaseAgreements = database.leaseAgreementDao().getAllForBackup(),
+                    rentPayments = database.rentPaymentDao().getAllForBackup(),
+                    expenses = database.expenseDao().getAllForBackup(),
+                    activityLogs = database.activityLogDao().getAllForBackup()
+                )
 
-                // Close Room database before overwriting the file
-                database.close()
+                onProgress("Creating backup file...")
+                // Convert to JSON and write to Uri
+                val json = gson.toJson(backupData)
 
-                // Copy from SAF Uri -> DB location
-                context.contentResolver.openInputStream(backupUri)?.use { input ->
-                    FileOutputStream(dbFile, false).use { output ->
-                        input.copyTo(output)
-                        output.flush()
-                    }
+                context.contentResolver.openOutputStream(destUri, "w")?.use { outputStream ->
+                    outputStream.write(json.toByteArray())
+                    outputStream.flush()
                 } ?: return@withContext false
 
-                // Reopen database (ensures AppDatabase is usable again)
-                database.openHelper.writableDatabase
-
+                onProgress("Backup completed successfully!")
                 true
             } catch (e: Exception) {
                 e.printStackTrace()
+                onProgress("Backup failed: ${e.message}")
                 false
             }
         }
 
-    // Optional: internal restore (from a File already in internal backup dir)
-    suspend fun restoreFromInternalFile(file: File): Boolean =
+    // ----- Import functionality -----
+
+    /** Import and merge backup data from SAF Uri */
+    suspend fun importAndMergeFromUri(backupUri: Uri, currentUserId: Long, onProgress: (String) -> Unit = {}): Boolean =
         withContext(Dispatchers.IO) {
             try {
-                if (!file.exists() || !isLikelyLeaseHubBackup(file.name)) return@withContext false
-                val schema = parseSchemaFromName(file.name)
-                if (schema != null && schema != AppDatabase.VERSION) return@withContext false
+                onProgress("Reading backup file...")
 
-                val dbFile = context.getDatabasePath(DB_NAME)
-                database.close()
-                FileInputStream(file).use { input ->
-                    FileOutputStream(dbFile, false).use { output ->
-                        input.copyTo(output)
-                        output.flush()
-                    }
+                // Read backup file
+                val json = context.contentResolver.openInputStream(backupUri)?.use { input ->
+                    input.bufferedReader().use { it.readText() }
+                } ?: return@withContext false
+
+                onProgress("Parsing backup data...")
+                // Parse backup data
+                val backupData = gson.fromJson(json, BackupData::class.java)
+
+                // Validate backup version
+                if (backupData.version != BACKUP_VERSION) {
+                    onProgress("Backup version mismatch. Expected: $BACKUP_VERSION, Found: ${backupData.version}")
+                    return@withContext false
                 }
-                database.openHelper.writableDatabase
+
+                onProgress("Merging data...")
+                // Use withTransaction instead of runInTransaction for coroutine support
+                database.withTransaction {
+                    // Merge users (preserve current user, add new ones)
+                    mergeUsers(backupData.users, currentUserId, onProgress)
+
+                    // Merge shops (add new ones, update existing with newer timestamps)
+                    mergeShops(backupData.shops, currentUserId, onProgress)
+
+                    // Merge tenants (add new ones, update existing with newer timestamps)
+                    mergeTenants(backupData.tenants, currentUserId, onProgress)
+
+                    // Merge lease agreements
+                    mergeLeaseAgreements(backupData.leaseAgreements, currentUserId, onProgress)
+
+                    // Merge rent payments (avoid duplicates)
+                    mergeRentPayments(backupData.rentPayments, currentUserId, onProgress)
+
+                    // Merge expenses (avoid duplicates)
+                    mergeExpenses(backupData.expenses, currentUserId, onProgress)
+
+                    // Merge activity logs (add new ones)
+                    mergeActivityLogs(backupData.activityLogs, currentUserId, onProgress)
+                }
+
+                onProgress("Import completed successfully!")
                 true
             } catch (e: Exception) {
                 e.printStackTrace()
+                onProgress("Import failed: ${e.message}")
                 false
             }
         }
+
+    // ----- Individual merge functions (now marked as suspend) -----
+
+    private suspend fun mergeUsers(backupUsers: List<User>, currentUserId: Long, onProgress: (String) -> Unit) {
+        onProgress("Merging users...")
+        backupUsers.forEach { backupUser ->
+            if (backupUser.id != currentUserId) { // Don't overwrite current user
+                val existingUser = database.userDao().getUserById(backupUser.id)
+                if (existingUser == null) {
+                    database.userDao().insert(backupUser)
+                } else if (existingUser.lastLogin?.before(backupUser.lastLogin ?: Date(0)) == true) {
+                    // Update if backup user is newer
+                    database.userDao().update(backupUser)
+                }
+            }
+        }
+    }
+
+    private suspend fun mergeShops(backupShops: List<Shop>, currentUserId: Long, onProgress: (String) -> Unit) {
+        onProgress("Merging shops...")
+        backupShops.forEach { backupShop ->
+            if (backupShop.userId == currentUserId) { // Only merge shops belonging to current user
+                val existingShop = database.shopDao().getShopByIdSync(backupShop.id)
+                if (existingShop == null) {
+                    database.shopDao().insert(backupShop)
+                } else if (existingShop.createdAt.before(backupShop.createdAt)) {
+                    // Update if backup shop is newer
+                    database.shopDao().update(backupShop)
+                }
+            }
+        }
+    }
+
+    private suspend fun mergeTenants(backupTenants: List<Tenant>, currentUserId: Long, onProgress: (String) -> Unit) {
+        onProgress("Merging tenants...")
+        backupTenants.forEach { backupTenant ->
+            if (backupTenant.userId == currentUserId) {
+                val existingTenant = database.tenantDao().getTenantByIdSync(currentUserId, backupTenant.id)
+                if (existingTenant == null) {
+                    database.tenantDao().insert(backupTenant)
+                } else if (existingTenant.createdAt.before(backupTenant.createdAt)) {
+                    database.tenantDao().update(backupTenant)
+                }
+            }
+        }
+    }
+
+    private suspend fun mergeLeaseAgreements(backupAgreements: List<LeaseAgreement>, currentUserId: Long, onProgress: (String) -> Unit) {
+        onProgress("Merging lease agreements...")
+        backupAgreements.forEach { backupAgreement ->
+            if (backupAgreement.userId == currentUserId) {
+                val existingAgreement = database.leaseAgreementDao().getAgreementById(backupAgreement.id, currentUserId)
+                if (existingAgreement == null) {
+                    database.leaseAgreementDao().insert(backupAgreement)
+                } else if (existingAgreement.createdAt.before(backupAgreement.createdAt)) {
+                    database.leaseAgreementDao().update(backupAgreement)
+                }
+            }
+        }
+    }
+
+    private suspend fun mergeRentPayments(backupPayments: List<RentPayment>, currentUserId: Long, onProgress: (String) -> Unit) {
+        onProgress("Merging rent payments...")
+        backupPayments.forEach { backupPayment ->
+            if (backupPayment.userId == currentUserId) {
+                val existingPayment = database.rentPaymentDao().getPaymentByIdSync(backupPayment.id, currentUserId)
+                if (existingPayment == null) {
+                    database.rentPaymentDao().insert(backupPayment)
+                }
+                // Don't update existing payments to avoid overwriting recent data
+            }
+        }
+    }
+
+    private suspend fun mergeExpenses(backupExpenses: List<Expense>, currentUserId: Long, onProgress: (String) -> Unit) {
+        onProgress("Merging expenses...")
+        backupExpenses.forEach { backupExpense ->
+            if (backupExpense.userId == currentUserId) {
+                val existingExpense = database.expenseDao().getExpenseByIdSync(backupExpense.id)
+                if (existingExpense == null) {
+                    database.expenseDao().insert(backupExpense)
+                }
+            }
+        }
+    }
+
+    private suspend fun mergeActivityLogs(backupLogs: List<ActivityLog>, currentUserId: Long, onProgress: (String) -> Unit) {
+        onProgress("Merging activity logs...")
+        backupLogs.forEach { backupLog ->
+            if (backupLog.userId == currentUserId) {
+                val existingLog = database.activityLogDao().getActivityLogByIdSync(backupLog.id)
+                if (existingLog == null) {
+                    database.activityLogDao().insert(backupLog)
+                }
+            }
+        }
+    }
 }

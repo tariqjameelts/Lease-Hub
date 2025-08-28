@@ -82,6 +82,9 @@ dependencies {
 
     implementation(libs.bcrypt)
 
+    implementation("com.google.code.gson:gson:2.13.1")
+    implementation("androidx.documentfile:documentfile:1.1.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

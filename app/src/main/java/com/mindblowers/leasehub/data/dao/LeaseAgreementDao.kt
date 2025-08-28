@@ -29,6 +29,10 @@ interface LeaseAgreementDao {
         userId: Long
     ): LeaseAgreement?
 
+
+    @Query("SELECT * FROM lease_agreements")
+    suspend fun getAllForBackup(): List<LeaseAgreement>
+
     @Update
     suspend fun update(agreement: LeaseAgreement)
     @Delete

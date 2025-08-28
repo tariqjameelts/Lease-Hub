@@ -19,6 +19,12 @@ interface TenantDao {
     @Delete
     suspend fun delete(tenant: Tenant)
 
+    @Query("SELECT * FROM tenants")
+    suspend fun getAllForBackup(): List<Tenant>
+
+    @Query("SELECT * FROM tenants WHERE id = :id AND userId = :userId")
+    suspend fun getTenantByIdSync(userId: Long, id: Long): Tenant?
+
     // ✅ tenant by id + user
     @Query("SELECT * FROM tenants WHERE id = :id AND userId = :userId")
     fun getTenantById(userId: Long, id: Long): Flow<Tenant?>

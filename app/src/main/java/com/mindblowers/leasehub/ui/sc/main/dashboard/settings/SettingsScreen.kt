@@ -3,24 +3,56 @@ package com.mindblowers.leasehub.ui.sc.main.dashboard.settings
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import java.io.File
+import com.mindblowers.leasehub.R
+import com.mindblowers.leasehub.data.prefs.ThemeOption
+import com.mindblowers.leasehub.utils.showToast
 
 @Composable
 fun SettingsScreen(
@@ -28,78 +60,33 @@ fun SettingsScreen(
     onLogout: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val operationProgress by viewModel.operationProgress.collectAsState()
+    val context = LocalContext.current
+
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showEditUsernameDialog by remember { mutableStateOf(false) }
-    val context  = LocalContext.current
 
-    // Restore confirmations
-    var pendingInternalRestore by remember { mutableStateOf<File?>(null) }
-    var showRestoreWarning by remember { mutableStateOf(false) }
-
-    // ----- SAF Launchers -----
-
-    // Export: CreateDocument
+    // SAF Launchers
     val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
+        contract = ActivityResultContracts.CreateDocument("application/json"),
         onResult = { uri ->
             if (uri != null) {
-                viewModel.exportLatestBackupToUri(uri) { ok ->
-                    // You can show a snackbar/toast via your mechanism
-                    // e.g., if (!ok) show error
-                }
+                viewModel.exportBackup(uri)
             }
         }
     )
 
-    // Import: OpenDocument
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri ->
             if (uri != null) {
-                val ctx = context
-                val name = runCatching {
-                    ctx.contentResolver.query(uri, null, null, null, null)?.use { c ->
-                        val nameIdx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                        if (c.moveToFirst() && nameIdx != -1) c.getString(nameIdx) else null
-                    }
-                }.getOrNull()
-
-                viewModel.importAndRestoreFromUri(uri, name) { ok ->
-                    // snackbar/toast if needed
-                }
+                viewModel.importBackup(uri)
             }
         }
     )
 
-
-    // ----- Dialogs -----
-    if (showRestoreWarning) {
-        AlertDialog(
-            onDismissRequest = { showRestoreWarning = false; pendingInternalRestore = null },
-            title = { Text("Restore backup?") },
-            text = { Text("Restoring a backup will REPLACE all current app data with the backup. This cannot be undone.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    val file = pendingInternalRestore
-                    showRestoreWarning = false
-                    if (file != null) {
-                        viewModel.restoreInternalBackup(file) { ok ->
-                            // snackbar/toast if needed
-                        }
-                    }
-                    pendingInternalRestore = null
-                }) { Text("Restore") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRestoreWarning = false; pendingInternalRestore = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    // --- Edit dialog for full name ---
+    // Dialogs
     if (showEditNameDialog && uiState.user != null) {
         EditNameDialog(
             currentName = uiState.user!!.fullName,
@@ -111,7 +98,6 @@ fun SettingsScreen(
         )
     }
 
-    // --- Edit dialog for username ---
     if (showEditUsernameDialog && uiState.user != null) {
         EditUsernameDialog(
             currentUsername = uiState.user!!.username,
@@ -134,6 +120,36 @@ fun SettingsScreen(
         )
     }
 
+    // Show progress during operations
+    if (uiState.isOperationInProgress) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Spacer(Modifier.height(16.dp))
+                Text("Processing...", color = Color.White)
+                operationProgress?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, color = Color.White, fontSize = 12.sp)
+                }
+            }
+        }
+    }
+
+    // Show success/error messages
+    LaunchedEffect(operationProgress) {
+        operationProgress?.let { message ->
+            if (!uiState.isOperationInProgress) {
+                showToast(context, message)
+                viewModel.clearProgress()
+            }
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -142,7 +158,7 @@ fun SettingsScreen(
     ) {
         // --- User Profile ---
         item {
-            SettingsCard(title = "User Profile", icon = Icons.Default.Info) {
+            SettingsCard(title = "User Profile", icon = R.drawable.profile_icon) {
                 if (uiState.user != null) {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         // Full Name
@@ -195,7 +211,7 @@ fun SettingsScreen(
 
         // --- Appearance ---
         item {
-            SettingsCard(title = "Appearance", icon = Icons.Default.Info) {
+            SettingsCard(title = "Appearance", icon = R.drawable.theme_icon) {
                 // Theme options
                 ThemeOption.entries.forEach { option ->
                     RadioSettingRow(
@@ -221,61 +237,44 @@ fun SettingsScreen(
             }
         }
 
-
-        // --- Database & Backup ---
+        // --- Backup & Restore Section ---
         item {
-            SettingsCard(title = "Database & Backup", icon = Icons.Default.Info) {
-                // Internal quick backup
-                SettingActionRow(
-                    title = "Create Internal Backup",
-                    onClick = { viewModel.createInternalBackup() }
-                )
+            SettingsCard(title = "Backup & Restore", icon = R.drawable.backup_icon) {
+                // Disable buttons during operations
+                val enabled = !uiState.isOperationInProgress
 
-                // Export (SAF)
+                // Export Backup
                 SettingActionRow(
-                    title = "Export Backup (Choose location)",
+                    title = "Export Backup",
                     onClick = {
-                        // Suggest file name
-                        val fname = viewModel.suggestedBackupFileName()
-                        exportLauncher.launch(fname)
-                    }
+                        val fileName = "leasehub_backup_${System.currentTimeMillis()}.json"
+                        exportLauncher.launch(fileName)
+                    },
+                    enabled = enabled
                 )
 
-                // Import (SAF) -> Restore
+                // Import Backup
                 SettingActionRow(
-                    title = "Import & Restore Backup",
+                    title = "Import Backup",
                     onClick = {
-                        importLauncher.launch(arrayOf("*/*"))
-                    }
+                        importLauncher.launch(arrayOf("application/json"))
+                    },
+                    enabled = enabled
                 )
 
-                if (uiState.backups.isNotEmpty()) {
-                    Spacer(Modifier.height(12.dp))
-                    Text("Internal Backups", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(8.dp))
-
-                    uiState.backups.forEach { file ->
-                        InternalBackupRow(
-                            file = file,
-                            readableSize = viewModel.getReadableSize(file),
-                            onRestore = {
-                                pendingInternalRestore = file
-                                showRestoreWarning = true
-                            },
-                            onDelete = { viewModel.deleteBackup(file) }
-                        )
-                    }
-                }
+                // Information text
+                Text(
+                    "Exports all your data to a JSON file. Importing will merge data without losing existing information.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
 
         // --- Account & Security ---
         item {
-            SettingsCard(title = "Account & Security", icon = Icons.Default.Info) {
-                /*SettingActionRow(
-                    title = "Change Password",
-                    onClick = { viewModel.changePassword() }
-                )*/
+            SettingsCard(title = "Account & Security", icon = R.drawable.account_security_icon) {
                 SettingActionRow(
                     title = "Logout",
                     onClick = { showLogoutDialog = true },
@@ -286,7 +285,7 @@ fun SettingsScreen(
 
         // --- About ---
         item {
-            SettingsCard(title = "About", icon = Icons.Default.Info) {
+            SettingsCard(title = "About", icon = R.drawable.about_icon) {
                 KeyValueRow("App Version", "LeaseHub v1.0.0")
                 KeyValueRow("©", "2025 Mindblowers")
             }
@@ -294,55 +293,12 @@ fun SettingsScreen(
     }
 }
 
-// --- Edit Username Dialog ---
-@Composable
-fun EditUsernameDialog(
-    currentUsername: String,
-    onDismiss: () -> Unit,
-    onSave: (String) -> Unit
-) {
-    var username by remember { mutableStateOf(currentUsername) }
-    val isValid = remember(username) {
-        username.matches(Regex("^[a-z_]+$")) && username.isNotBlank()
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit Username") },
-        text = {
-            OutlinedTextField(
-                value = username,
-                onValueChange = { username = it },
-                label = { Text("Username") },
-                singleLine = true,
-                supportingText = {
-                    Text("Only lowercase letters and underscores allowed")
-                }
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onSave(username) },
-                enabled = isValid
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-
-// --- UI building blocks ---
+// --- UI Components ---
 
 @Composable
 fun SettingsCard(
     title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: Int,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
@@ -354,7 +310,7 @@ fun SettingsCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Icon(painter = painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
                 Text(title, style = MaterialTheme.typography.titleMedium)
             }
@@ -365,11 +321,16 @@ fun SettingsCard(
 }
 
 @Composable
-fun SettingActionRow(title: String, onClick: () -> Unit, isDestructive: Boolean = false) {
+fun SettingActionRow(
+    title: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    isDestructive: Boolean = false
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .clickable(enabled = enabled) { onClick() }
             .padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -377,10 +338,16 @@ fun SettingActionRow(title: String, onClick: () -> Unit, isDestructive: Boolean 
         Text(
             title,
             style = MaterialTheme.typography.bodyMedium,
-            color = if (isDestructive) MaterialTheme.colorScheme.error
+            color = if (!enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            else if (isDestructive) MaterialTheme.colorScheme.error
             else MaterialTheme.colorScheme.onSurface
         )
-        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+        Icon(
+            Icons.AutoMirrored.Filled.ArrowForward,
+            contentDescription = null,
+            tint = if (!enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            else MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 
@@ -425,37 +392,6 @@ fun SwitchSettingRow(
                 subtitle,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline
-            )
-        }
-    }
-}
-
-@Composable
-fun BackupRow(
-    file: File,
-    onDelete: () -> Unit,
-    getReadableSize: () -> String
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(file.name, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                getReadableSize(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline
-            )
-        }
-        IconButton(onClick = onDelete) {
-            Icon(
-                Icons.Default.Delete,
-                contentDescription = "Delete Backup",
-                tint = MaterialTheme.colorScheme.error
             )
         }
     }
@@ -510,6 +446,46 @@ fun EditNameDialog(
     )
 }
 
+@Composable
+fun EditUsernameDialog(
+    currentUsername: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var username by remember { mutableStateOf(currentUsername) }
+    val isValid = remember(username) {
+        username.matches(Regex("^[a-z_]+$")) && username.isNotBlank()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Username") },
+        text = {
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Username") },
+                singleLine = true,
+                supportingText = {
+                    Text("Only lowercase letters and underscores allowed")
+                }
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(username) },
+                enabled = isValid
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
 
 @Composable
 fun LogoutConfirmDialog(
@@ -531,31 +507,4 @@ fun LogoutConfirmDialog(
             }
         }
     )
-}
-
-
-
-@Composable
-private fun InternalBackupRow(
-    file: File,
-    readableSize: String,
-    onRestore: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(file.name, style = MaterialTheme.typography.bodyMedium)
-            Text(readableSize, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-        }
-        Row {
-            TextButton(onClick = onRestore) { Text("Restore") }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete Backup", tint = MaterialTheme.colorScheme.error)
-            }
-        }
-    }
 }

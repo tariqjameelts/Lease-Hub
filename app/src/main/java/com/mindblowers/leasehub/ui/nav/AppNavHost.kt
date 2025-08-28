@@ -1,7 +1,8 @@
 package com.mindblowers.leasehub.ui.nav
 
 import android.util.Log
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -9,7 +10,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.mindblowers.leasehub.ui.sc.auth.signin.LoginScreen
-import com.mindblowers.leasehub.ui.sc.onboard.OnboardingScreen
 import com.mindblowers.leasehub.ui.sc.auth.signup.AuthViewModel
 import com.mindblowers.leasehub.ui.sc.auth.signup.SignUpScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.DashboardScreen
@@ -17,46 +17,56 @@ import com.mindblowers.leasehub.ui.sc.main.dashboard.reports.ActivityReportsScre
 import com.mindblowers.leasehub.ui.sc.main.dashboard.reports.FinancialReportsScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.reports.LeaseReportsScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.reports.ReportsNavRoutes
+import com.mindblowers.leasehub.ui.sc.main.dashboard.reports.ReportsScreen
+import com.mindblowers.leasehub.ui.sc.main.dashboard.settings.SettingsScreen
+import com.mindblowers.leasehub.ui.sc.main.dashboard.shop.ShopDetailScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.shop.ShopListScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.tenant.AddTenantScreen
-import com.mindblowers.leasehub.ui.sc.main.dashboard.reports.ReportsScreen
-import com.mindblowers.leasehub.ui.sc.main.dashboard.shop.ShopDetailScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.tenant.TenantDetailScreen
 import com.mindblowers.leasehub.ui.sc.main.dashboard.tenant.TenantsScreen
-import com.mindblowers.leasehub.ui.sc.main.dashboard.settings.SettingsScreen
-import kotlinx.coroutines.launch
+import com.mindblowers.leasehub.ui.sc.onboard.OnboardingScreen
 
 @Composable
 fun AppNavHost(
     navController: NavHostController,
     authViewModel: AuthViewModel = hiltViewModel()
 ) {
-    val scope = rememberCoroutineScope()
+    val startDest =
+        if (authViewModel.appPrefs.isNewUser()) "onboarding" else if (authViewModel.appPrefs.isLoggedIn()) "dashboard" else "signin"
 
-    // ✅ Track start destination dynamically
-   // var startDest by remember { mutableStateOf<String?>(null) }
-
-    val startDest = if (authViewModel.appPrefs.isNewUser()) "onboarding" else if (authViewModel.appPrefs.isLoggedIn()) "dashboard" else "signin"
-
-
-    // Render NavHost only when we  asdknow the start destination
     NavHost(
         navController = navController,
         startDestination = startDest
     ) {
         // Onboarding
         composable("onboarding") {
-            OnboardingScreen(navController)
+            OnboardingScreen() {
+                navController.navigate("signin") {
+                    popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                    launchSingleTop = true
+                }
+                authViewModel.appPrefs.setNotNewUser()
+            }
         }
 
         // Sign Up / Login
         composable("signup") {
 
-            SignUpScreen (navController){
-                navController.navigate("dashboard") {
-                    popUpTo("signup") { inclusive = true }
+            SignUpScreen(
+                onSignUpSuccess = {
+                    // Navigate to dashboard and clear backstack
+                    navController.navigate("dashboard") {
+                        popUpTo("signup") { inclusive = true }
+                    }
+                },
+                onNavigateToLogin = {
+                    // Navigate to login and replace signup in backstack
+                   // navController.popBackStack()
+                    navController.navigate("signin") {
+                         popUpTo("signup") { inclusive = true }
+                    }
                 }
-            }
+            )
         }
 
         // Dashboard
@@ -79,8 +89,19 @@ fun AppNavHost(
                 LaunchedEffect(Unit) { navController.popBackStack() }
             }
         }
-        composable("signin"){
-            LoginScreen(navController)
+        composable("signin") {
+            LoginScreen(
+                onLoginSuccess = {
+                    // Navigate to dashboard and clear backstack
+                    navController.navigate("dashboard") {
+                        popUpTo("signin") { inclusive = true }
+                    }
+                },
+                onNavigateToSignUp = {
+                    // Navigate to signup and replace login in backstack
+                    navController.navigate("signup")
+                }
+            )
         }
 
         composable("add_tenant/{shopId}") { AddTenantScreen(navController) }
@@ -89,7 +110,6 @@ fun AppNavHost(
         composable("settings") {
             SettingsScreen(
                 onLogout = {
-                    Log.d("SettingsScreen", "Logging out...")
                     navController.navigate("signup") {
                         popUpTo("dashboard") { inclusive = true }
                     }

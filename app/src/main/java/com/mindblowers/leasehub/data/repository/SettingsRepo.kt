@@ -1,7 +1,7 @@
 package com.mindblowers.leasehub.data.repository
 
 import com.mindblowers.leasehub.data.prefs.AppPrefs
-import com.mindblowers.leasehub.ui.sc.main.dashboard.settings.ThemeOption
+import com.mindblowers.leasehub.data.prefs.ThemeOption
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject

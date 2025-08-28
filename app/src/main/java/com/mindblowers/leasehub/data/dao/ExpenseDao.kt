@@ -24,6 +24,13 @@ interface ExpenseDao {
     fun getExpensesBetweenDatesFlow(startDate: Date, endDate: Date): Flow<List<Expense>>
 
 
+    @Query("SELECT * FROM expenses")
+    suspend fun getAllForBackup(): List<Expense>
+
+    @Query("SELECT * FROM expenses WHERE id = :id")
+    suspend fun getExpenseByIdSync(id: Long): Expense?
+
+
     @Query("SELECT SUM(amount) FROM expenses WHERE expenseDate BETWEEN :startDate AND :endDate")
     suspend fun getTotalExpensesBetweenDates(startDate: Date, endDate: Date): Double
 

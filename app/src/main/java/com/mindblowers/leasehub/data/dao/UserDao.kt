@@ -19,7 +19,8 @@ interface UserDao {
 
     @Query("UPDATE users SET isActive = 0")
     suspend fun deactivateAllUsers()
-
+    @Query("SELECT * FROM users")
+    suspend fun getAllForBackup(): List<User>
 
     @Update
     suspend fun update(user: User)
